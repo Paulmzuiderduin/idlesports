@@ -151,7 +151,7 @@ const REBIRTH_STEPS = [
 ];
 
 const REBIRTH_POST_SCALE = 1.35;
-const RIGHT_PANEL_IDS = ['flow', 'season', 'legacy', 'rebirths', 'leaderboard', 'nextsteps'];
+const RIGHT_PANEL_IDS = ['season', 'legacy', 'rebirths', 'leaderboard', 'nextsteps'];
 
 const getRebirthRequirement = (rebirths) => {
   const lastIndex = REBIRTH_STEPS.length - 1;
@@ -1087,50 +1087,6 @@ function App() {
     }),
     [rates]
   );
-  const conversionActual = useMemo(
-    () => ({
-      dataUsePerSec: effectiveRates.insightsProduced * rates.dataCostPerInsight,
-      insightUsePerSec: effectiveRates.winsProduced * rates.insightCostPerWin,
-      winUsePerSec: effectiveRates.fansProduced * rates.winCostPerFan
-    }),
-    [effectiveRates, rates]
-  );
-  const efficiency = useMemo(
-    () => ({
-      insights: rates.insightPerSec > 0 ? effectiveRates.insightsProduced / rates.insightPerSec : 1,
-      wins: rates.winPerSec > 0 ? effectiveRates.winsProduced / rates.winPerSec : 1,
-      fans: rates.fanPerSec > 0 ? effectiveRates.fansProduced / rates.fanPerSec : 1
-    }),
-    [effectiveRates, rates]
-  );
-  const bottleneck = useMemo(() => {
-    const insightEff = efficiency.insights;
-    const winEff = efficiency.wins;
-    const fanEff = efficiency.fans;
-    const minEff = Math.min(insightEff, winEff, fanEff);
-    if (minEff >= 0.999) {
-      return {
-        title: 'Balanced flow',
-        detail: 'All conversion stages are running at full capacity. Scale evenly for faster growth.'
-      };
-    }
-    if (minEff === insightEff) {
-      return {
-        title: 'Data bottleneck',
-        detail: `Analyst Pods are running at ${formatPercent(insightEff)}. Add Scout Bots or Fan Outreach.`
-      };
-    }
-    if (minEff === winEff) {
-      return {
-        title: 'Insight bottleneck',
-        detail: `Strategy Labs are running at ${formatPercent(winEff)}. Add Analyst Pods.`
-      };
-    }
-    return {
-      title: 'Win bottleneck',
-      detail: `Fan Outreach is running at ${formatPercent(fanEff)}. Add Strategy Labs.`
-    };
-  }, [efficiency]);
   const championshipRequirement = useMemo(
     () => getChampionshipRequirement(gameState.resources.titles),
     [gameState.resources.titles]
@@ -1459,12 +1415,7 @@ function App() {
           </div>
           <p className="stat-value">{formatNumber(gameState.resources.data)}</p>
           <p className="stat-meta">Gross: {formatRate(rates.dataPerSec)}</p>
-          <p className="stat-meta">
-            Used for insights: {formatRate(conversionActual.dataUsePerSec)} of {formatRate(conversionDemand.dataUsePerSec)}
-            {efficiency.insights < 0.999 && (
-              <span className="pill warn">starved ({formatPercent(efficiency.insights)})</span>
-            )}
-          </p>
+          <p className="stat-meta">Used for insights: {formatRate(conversionDemand.dataUsePerSec)}</p>
           <p className="stat-meta">
             Net now:{' '}
             <span className={`strong ${effectiveRates.dataNet < 0 ? 'negative' : ''}`}>
@@ -1479,12 +1430,7 @@ function App() {
           </div>
           <p className="stat-value">{formatNumber(gameState.resources.insights)}</p>
           <p className="stat-meta">Gross: {formatRate(rates.insightPerSec)}</p>
-          <p className="stat-meta">
-            Used for wins: {formatRate(conversionActual.insightUsePerSec)} of {formatRate(conversionDemand.insightUsePerSec)}
-            {efficiency.wins < 0.999 && (
-              <span className="pill warn">starved ({formatPercent(efficiency.wins)})</span>
-            )}
-          </p>
+          <p className="stat-meta">Used for wins: {formatRate(conversionDemand.insightUsePerSec)}</p>
           <p className="stat-meta">
             Net now:{' '}
             <span className={`strong ${effectiveRates.insightsNet < 0 ? 'negative' : ''}`}>
@@ -1499,10 +1445,7 @@ function App() {
           </div>
           <p className="stat-value">{formatNumber(gameState.resources.wins)}</p>
           <p className="stat-meta">Gross: {formatRate(rates.winPerSec)}</p>
-          <p className="stat-meta">
-            Used for fans: {formatRate(conversionActual.winUsePerSec)} of {formatRate(conversionDemand.winUsePerSec)}
-            {efficiency.fans < 0.999 && <span className="pill warn">starved ({formatPercent(efficiency.fans)})</span>}
-          </p>
+          <p className="stat-meta">Used for fans: {formatRate(conversionDemand.winUsePerSec)}</p>
           <p className="stat-meta">
             Net now:{' '}
             <span className={`strong ${effectiveRates.winsNet < 0 ? 'negative' : ''}`}>
@@ -1682,52 +1625,6 @@ function App() {
                 </button>
               </div>
             );
-
-            if (panelId === 'flow') {
-              return (
-                <div key={panelId} className="panel">
-                  <div className="panel-header">
-                    <div>
-                      <h3>Flow Monitor</h3>
-                      <p className="muted">Live conversion throughput at each stage.</p>
-                    </div>
-                    {actions}
-                  </div>
-                  <div className="flow">
-                    <div className="flow-row">
-                      <span>Data → Insights</span>
-                      <span>
-                        {formatRate(conversionActual.dataUsePerSec)} / {formatRate(conversionDemand.dataUsePerSec)}
-                      </span>
-                      <span className={`pill ${efficiency.insights < 0.999 ? 'warn' : 'accent'}`}>
-                        {formatPercent(efficiency.insights)}
-                      </span>
-                    </div>
-                    <div className="flow-row">
-                      <span>Insights → Wins</span>
-                      <span>
-                        {formatRate(conversionActual.insightUsePerSec)} / {formatRate(conversionDemand.insightUsePerSec)}
-                      </span>
-                      <span className={`pill ${efficiency.wins < 0.999 ? 'warn' : 'accent'}`}>
-                        {formatPercent(efficiency.wins)}
-                      </span>
-                    </div>
-                    <div className="flow-row">
-                      <span>Wins → Fans</span>
-                      <span>
-                        {formatRate(conversionActual.winUsePerSec)} / {formatRate(conversionDemand.winUsePerSec)}
-                      </span>
-                      <span className={`pill ${efficiency.fans < 0.999 ? 'warn' : 'accent'}`}>
-                        {formatPercent(efficiency.fans)}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="notice subtle">
-                    <strong>{bottleneck.title}.</strong> {bottleneck.detail}
-                  </div>
-                </div>
-              );
-            }
 
             if (panelId === 'season') {
               return (
