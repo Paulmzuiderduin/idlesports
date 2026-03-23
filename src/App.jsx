@@ -1226,6 +1226,12 @@ function App() {
       : null;
   const postStoryGain = postStoryDivisor ? Math.max(1, Math.floor(progressScore / postStoryDivisor)) : baseLegacyGain;
   const nextLegacyGain = gameState.rebirths >= lastStoryIndex ? postStoryGain : baseLegacyGain;
+  const legacyPreviewNote =
+    gameState.rebirths >= lastStoryIndex && postStoryDivisor
+      ? `Legacy preview: ${formatWhole(nextLegacyGain)} point(s) at ${formatWhole(progressScore)} score (1 per ${formatWhole(
+          postStoryDivisor
+        )}).`
+      : null;
 
   const handleClick = () => {
     setGameState((prev) => ({
@@ -1487,6 +1493,7 @@ function App() {
             Rebirth +{nextLegacyGain} legacy
           </button>
         </div>
+        {legacyPreviewNote && <p className="muted small">{legacyPreviewNote}</p>}
         {offlineSummary && (
           <div className="notice">
             Offline progress applied: {Math.floor(offlineSummary.elapsedSeconds)} seconds at{' '}
