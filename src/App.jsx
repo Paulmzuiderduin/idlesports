@@ -149,6 +149,33 @@ const REBIRTH_STEPS = [
   }
 ];
 
+const REBIRTH_POST_SCALE = 1.35;
+
+const getRebirthRequirement = (rebirths) => {
+  const lastIndex = REBIRTH_STEPS.length - 1;
+  if (rebirths < lastIndex) {
+    const nextStep = REBIRTH_STEPS[rebirths + 1];
+    return { threshold: nextStep.threshold, title: nextStep.title, isPost: false };
+  }
+  const extra = rebirths - lastIndex + 1;
+  const base = REBIRTH_STEPS[lastIndex].threshold;
+  return {
+    threshold: Math.round(base * Math.pow(REBIRTH_POST_SCALE, extra)),
+    title: `Automation Era +${extra}`,
+    isPost: true
+  };
+};
+
+const getRebirthPreviousThreshold = (rebirths) => {
+  const lastIndex = REBIRTH_STEPS.length - 1;
+  if (rebirths <= lastIndex) {
+    return REBIRTH_STEPS[rebirths].threshold;
+  }
+  const extra = rebirths - lastIndex;
+  const base = REBIRTH_STEPS[lastIndex].threshold;
+  return Math.round(base * Math.pow(REBIRTH_POST_SCALE, extra));
+};
+
 const LEGACY_UPGRADES = [
   {
     id: 'legacy-queries',
@@ -1083,18 +1110,21 @@ function App() {
     [gameState.resources]
   );
   const currentStepIndex = Math.min(gameState.rebirths, REBIRTH_STEPS.length - 1);
-  const nextStep = REBIRTH_STEPS[currentStepIndex + 1];
-  const scoreToNext = nextStep ? Math.max(0, nextStep.threshold - progressScore) : 0;
+  const nextRequirement = getRebirthRequirement(gameState.rebirths);
+  const prevThreshold = getRebirthPreviousThreshold(gameState.rebirths);
+  const nextStep = nextRequirement?.isPost ? null : REBIRTH_STEPS[currentStepIndex + 1];
+  const nextThreshold = nextRequirement?.threshold ?? null;
+  const scoreToNext = nextThreshold ? Math.max(0, nextThreshold - progressScore) : 0;
   const scoreRate = useMemo(
     () => effectiveRates.dataNet + effectiveRates.insightsNet * 5 + effectiveRates.winsNet * 20 + effectiveRates.fansNet * 2,
     [effectiveRates]
   );
   const timeToNext = scoreRate > 0 && scoreToNext > 0 ? scoreToNext / scoreRate : null;
-  const progressToNext = nextStep
-    ? (progressScore - REBIRTH_STEPS[currentStepIndex].threshold) /
-      (nextStep.threshold - REBIRTH_STEPS[currentStepIndex].threshold)
-    : 1;
-  const canRebirth = nextStep ? progressScore >= nextStep.threshold : false;
+  const progressToNext =
+    nextThreshold && nextThreshold > prevThreshold
+      ? (progressScore - prevThreshold) / (nextThreshold - prevThreshold)
+      : 1;
+  const canRebirth = nextThreshold ? progressScore >= nextThreshold : false;
   const nextLegacyGain = Math.max(1, Math.floor(Math.sqrt(progressScore / 800)));
 
   const handleClick = () => {
@@ -1377,7 +1407,7 @@ function App() {
           </div>
           <div>
             <p className="muted">Next rebirth unlock</p>
-            <p className="strong">{nextStep ? nextStep.title : 'Max tier reached'}</p>
+            <p className="strong">{nextRequirement ? nextRequirement.title : 'Max tier reached'}</p>
           </div>
           <div>
             <p className="muted">Score to next</p>
@@ -1676,7 +1706,7 @@ function App() {
                 </span>
                 <span>
                   ETA to next rebirth:{' '}
-                  {nextStep
+                  {nextThreshold
                     ? scoreRate > 0
                       ? formatDuration(timeToNext || 0)
                       : 'stalled'
@@ -1690,8 +1720,8 @@ function App() {
                 />
               </div>
               <p className="muted">
-                {nextStep
-                  ? `Next rebirth: ${nextStep.title} at ${formatWhole(nextStep.threshold)} combined score. ${formatWhole(
+                {nextThreshold
+                  ? `Next rebirth: ${nextRequirement.title} at ${formatWhole(nextThreshold)} combined score. ${formatWhole(
                       scoreToNext
                     )} remaining.`
                   : 'Automatic tracking unlocked. Rebirths now speed everything up.'}
@@ -1771,6 +1801,9 @@ function App() {
                 );
               })}
             </div>
+            <p className="muted small">
+              After Automatic Tracking, rebirths continue as Automation Era +N with increasing score requirements.
+            </p>
           </div>
 
           <div className="panel">
