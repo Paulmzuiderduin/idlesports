@@ -1036,6 +1036,34 @@ function App() {
     }),
     [effectiveRates, rates]
   );
+  const bottleneck = useMemo(() => {
+    const insightEff = efficiency.insights;
+    const winEff = efficiency.wins;
+    const fanEff = efficiency.fans;
+    const minEff = Math.min(insightEff, winEff, fanEff);
+    if (minEff >= 0.999) {
+      return {
+        title: 'Balanced flow',
+        detail: 'All conversion stages are running at full capacity. Scale evenly for faster growth.'
+      };
+    }
+    if (minEff === insightEff) {
+      return {
+        title: 'Data bottleneck',
+        detail: `Analyst Pods are running at ${formatPercent(insightEff)}. Add Scout Bots or Fan Outreach.`
+      };
+    }
+    if (minEff === winEff) {
+      return {
+        title: 'Insight bottleneck',
+        detail: `Strategy Labs are running at ${formatPercent(winEff)}. Add Analyst Pods.`
+      };
+    }
+    return {
+      title: 'Win bottleneck',
+      detail: `Fan Outreach is running at ${formatPercent(fanEff)}. Add Strategy Labs.`
+    };
+  }, [efficiency]);
   const championshipRequirement = useMemo(
     () => getChampionshipRequirement(gameState.resources.titles),
     [gameState.resources.titles]
@@ -1423,17 +1451,17 @@ function App() {
       <section className="main-grid">
         <div className="stack">
           <div className="panel">
-            <div className="panel-header">
-              <div>
-                <h3>Operations</h3>
-                <p className="muted">Spend data, insights, and wins to scale your analytics pipeline.</p>
-                <p className="muted small">
-                  Auto-convert: {rates.dataCostPerInsight} data → 1 insight, {rates.insightCostPerWin} insights → 1 win,
-                  {rates.winCostPerFan} win → 1 fan.
-                </p>
-              </div>
-              <div className="chip-row">
-                {[1, 10, 25].map((amount) => (
+          <div className="panel-header">
+            <div>
+              <h3>Operations</h3>
+              <p className="muted">Spend data, insights, and wins to scale your analytics pipeline.</p>
+              <p className="muted small">
+                Auto-convert: {rates.dataCostPerInsight} data → 1 insight, {rates.insightCostPerWin} insights → 1 win,
+                {rates.winCostPerFan} win → 1 fan.
+              </p>
+            </div>
+            <div className="chip-row">
+              {[1, 10, 25].map((amount) => (
                   <button
                     key={amount}
                     className={`chip ${buyAmount === amount ? 'active' : ''}`}
@@ -1443,6 +1471,38 @@ function App() {
                   </button>
                 ))}
               </div>
+            </div>
+            <div className="flow">
+              <div className="flow-row">
+                <span>Data → Insights</span>
+                <span>
+                  {formatRate(conversionActual.dataUsePerSec)} / {formatRate(conversionDemand.dataUsePerSec)}
+                </span>
+                <span className={`pill ${efficiency.insights < 0.999 ? 'warn' : 'accent'}`}>
+                  {formatPercent(efficiency.insights)}
+                </span>
+              </div>
+              <div className="flow-row">
+                <span>Insights → Wins</span>
+                <span>
+                  {formatRate(conversionActual.insightUsePerSec)} / {formatRate(conversionDemand.insightUsePerSec)}
+                </span>
+                <span className={`pill ${efficiency.wins < 0.999 ? 'warn' : 'accent'}`}>
+                  {formatPercent(efficiency.wins)}
+                </span>
+              </div>
+              <div className="flow-row">
+                <span>Wins → Fans</span>
+                <span>
+                  {formatRate(conversionActual.winUsePerSec)} / {formatRate(conversionDemand.winUsePerSec)}
+                </span>
+                <span className={`pill ${efficiency.fans < 0.999 ? 'warn' : 'accent'}`}>
+                  {formatPercent(efficiency.fans)}
+                </span>
+              </div>
+            </div>
+            <div className="notice subtle">
+              <strong>{bottleneck.title}.</strong> {bottleneck.detail}
             </div>
             <div className="grid two">
               {BUILDINGS.map((building) => {
