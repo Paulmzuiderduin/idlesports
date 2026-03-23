@@ -151,7 +151,7 @@ const REBIRTH_STEPS = [
 ];
 
 const REBIRTH_POST_SCALE = 1.35;
-const RIGHT_PANEL_IDS = ['season', 'legacy', 'rebirths', 'leaderboard', 'nextsteps'];
+const RIGHT_PANEL_IDS = ['season', 'legacy', 'leaderboard', 'nextsteps'];
 
 const getRebirthRequirement = (rebirths) => {
   const lastIndex = REBIRTH_STEPS.length - 1;
@@ -1758,38 +1758,6 @@ function App() {
                       </div>
                     </div>
                   )}
-                </div>
-              );
-            }
-
-            if (panelId === 'rebirths') {
-              return (
-                <div key={panelId} className="panel">
-                  <div className="panel-header">
-                    <div>
-                      <h3>Analyst Rebirths</h3>
-                      <p className="muted">Your realistic build-up path, now tied to rebirths.</p>
-                    </div>
-                    {actions}
-                  </div>
-                  <div className="milestones">
-                    {REBIRTH_STEPS.map((step, index) => {
-                      const unlocked = gameState.rebirths >= index;
-                      const isCurrent = index === currentStepIndex;
-                      return (
-                        <div key={step.id} className={`milestone ${unlocked ? 'unlocked' : ''}`}>
-                          <div className={`milestone-dot ${isCurrent ? 'active' : ''}`}>{index + 1}</div>
-                          <div>
-                            <p className="card-title">{step.title}</p>
-                            <p className="muted">{step.description}</p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <p className="muted small">
-                    After Automatic Tracking, rebirths continue as Automation Era +N with increasing score requirements.
-                  </p>
                 </div>
               );
             }
