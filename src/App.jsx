@@ -1253,7 +1253,7 @@ function App() {
       ? Math.min(1, Math.max(0, (progressScore - prevThreshold) / (nextThreshold - prevThreshold)))
       : 1;
   const canRebirth = nextThreshold ? progressScore >= nextThreshold : false;
-  const baseLegacyGain = Math.max(1, Math.floor(Math.sqrt(progressScore / 800)));
+  const baseLegacyGain = 1;
   const lastStoryIndex = REBIRTH_STEPS.length - 1;
   const postStoryIndex = Math.max(0, gameState.rebirths - lastStoryIndex);
   const postStoryDivisor =
