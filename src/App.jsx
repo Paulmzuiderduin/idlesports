@@ -1487,38 +1487,6 @@ function App() {
                 ))}
               </div>
             </div>
-            <div className="flow">
-              <div className="flow-row">
-                <span>Data → Insights</span>
-                <span>
-                  {formatRate(conversionActual.dataUsePerSec)} / {formatRate(conversionDemand.dataUsePerSec)}
-                </span>
-                <span className={`pill ${efficiency.insights < 0.999 ? 'warn' : 'accent'}`}>
-                  {formatPercent(efficiency.insights)}
-                </span>
-              </div>
-              <div className="flow-row">
-                <span>Insights → Wins</span>
-                <span>
-                  {formatRate(conversionActual.insightUsePerSec)} / {formatRate(conversionDemand.insightUsePerSec)}
-                </span>
-                <span className={`pill ${efficiency.wins < 0.999 ? 'warn' : 'accent'}`}>
-                  {formatPercent(efficiency.wins)}
-                </span>
-              </div>
-              <div className="flow-row">
-                <span>Wins → Fans</span>
-                <span>
-                  {formatRate(conversionActual.winUsePerSec)} / {formatRate(conversionDemand.winUsePerSec)}
-                </span>
-                <span className={`pill ${efficiency.fans < 0.999 ? 'warn' : 'accent'}`}>
-                  {formatPercent(efficiency.fans)}
-                </span>
-              </div>
-            </div>
-            <div className="notice subtle">
-              <strong>{bottleneck.title}.</strong> {bottleneck.detail}
-            </div>
             <div className="grid two">
               {BUILDINGS.map((building) => {
                 const owned = gameState.buildings[building.id] || 0;
@@ -1628,6 +1596,43 @@ function App() {
         </div>
 
         <div className="stack">
+          <div className="panel">
+            <h3>Flow Monitor</h3>
+            <p className="muted">Live conversion throughput at each stage.</p>
+            <div className="flow">
+              <div className="flow-row">
+                <span>Data → Insights</span>
+                <span>
+                  {formatRate(conversionActual.dataUsePerSec)} / {formatRate(conversionDemand.dataUsePerSec)}
+                </span>
+                <span className={`pill ${efficiency.insights < 0.999 ? 'warn' : 'accent'}`}>
+                  {formatPercent(efficiency.insights)}
+                </span>
+              </div>
+              <div className="flow-row">
+                <span>Insights → Wins</span>
+                <span>
+                  {formatRate(conversionActual.insightUsePerSec)} / {formatRate(conversionDemand.insightUsePerSec)}
+                </span>
+                <span className={`pill ${efficiency.wins < 0.999 ? 'warn' : 'accent'}`}>
+                  {formatPercent(efficiency.wins)}
+                </span>
+              </div>
+              <div className="flow-row">
+                <span>Wins → Fans</span>
+                <span>
+                  {formatRate(conversionActual.winUsePerSec)} / {formatRate(conversionDemand.winUsePerSec)}
+                </span>
+                <span className={`pill ${efficiency.fans < 0.999 ? 'warn' : 'accent'}`}>
+                  {formatPercent(efficiency.fans)}
+                </span>
+              </div>
+            </div>
+            <div className="notice subtle">
+              <strong>{bottleneck.title}.</strong> {bottleneck.detail}
+            </div>
+          </div>
+
           <div className="panel">
             <h3>Season Push</h3>
             <p className="muted">Claim titles for permanent growth.</p>
