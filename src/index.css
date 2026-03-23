@@ -282,6 +282,32 @@ p {
   color: #fff;
 }
 
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 50;
+}
+
+.modal {
+  background: var(--panel);
+  border-radius: 24px;
+  padding: 24px;
+  max-width: 520px;
+  width: 100%;
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 12px;
+}
+
+.modal .btn {
+  width: fit-content;
+}
+
 .grid.two {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

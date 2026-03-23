@@ -110,43 +110,50 @@ const REBIRTH_STEPS = [
     id: 'paper',
     title: 'Pencil & Paper',
     description: 'Manual match tallying, no structure yet.',
-    threshold: 0
+    threshold: 0,
+    story: 'You start with a notebook and a pencil. Every stat is hand-tallied, every match a mess of scribbles.'
   },
   {
     id: 'sheet',
     title: 'Printed Stat Sheet',
     description: 'Structured boxes and quick totals after matches.',
-    threshold: 50
+    threshold: 50,
+    story: 'You convince the club to print standardized stat sheets. Suddenly every match looks the same.'
   },
   {
     id: 'excel',
     title: 'Excel Tracker',
     description: 'Spreadsheets, formulas, and rolling averages.',
-    threshold: 200
+    threshold: 200,
+    story: 'A spreadsheet becomes your command center. Formulas, averages, and consistency finally show up.'
   },
   {
     id: 'compare',
     title: 'Cross-Match Comparisons',
     description: 'Comparing players, lineups, and match trends.',
-    threshold: 600
+    threshold: 600,
+    story: 'You can now compare players across matches. Patterns emerge, and decisions get sharper.'
   },
   {
     id: 'app',
     title: 'Match Scoring App',
     description: 'Live match scoring on a dedicated app.',
-    threshold: 1500
+    threshold: 1500,
+    story: 'You ship a scoring app for live matches. Data lands instantly, not days later.'
   },
   {
     id: 'expand',
     title: 'Expanded App Suite',
     description: 'Reports, exports, and deeper analytics.',
-    threshold: 3000
+    threshold: 3000,
+    story: 'Reports, exports, and insights turn into a full suite. The front office starts to rely on you.'
   },
   {
     id: 'auto',
     title: 'Automatic Tracking',
     description: 'Sensors and video models track matches automatically.',
-    threshold: 6000
+    threshold: 6000,
+    story: 'Sensors and models track every movement. You stop logging matches and start shaping seasons.'
   }
 ];
 
@@ -228,6 +235,54 @@ const LEGACY_UPGRADES = [
     effect: { type: 'globalMult', value: 1.15 }
   },
   {
+    id: 'legacy-queries-2',
+    name: 'Legacy Query Nexus',
+    description: 'Data per click +3 permanently.',
+    cost: 3,
+    requiresRebirths: 2,
+    effect: { type: 'clickBonus', value: 3 }
+  },
+  {
+    id: 'legacy-warehouse-2',
+    name: 'Legacy Data Grid',
+    description: 'Data per second +40% permanently.',
+    cost: 4,
+    requiresRebirths: 3,
+    effect: { type: 'dataPerSecMult', value: 1.4 }
+  },
+  {
+    id: 'legacy-analysts-2',
+    name: 'Legacy Insight Engine',
+    description: 'Insight conversion +50% permanently.',
+    cost: 4,
+    requiresRebirths: 4,
+    effect: { type: 'insightPerSecMult', value: 1.5 }
+  },
+  {
+    id: 'legacy-strategy-2',
+    name: 'Legacy War Room',
+    description: 'Win conversion +55% permanently.',
+    cost: 5,
+    requiresRebirths: 5,
+    effect: { type: 'winPerSecMult', value: 1.55 }
+  },
+  {
+    id: 'legacy-network-2',
+    name: 'Legacy Fan Forum',
+    description: 'Fan conversion +60% permanently.',
+    cost: 5,
+    requiresRebirths: 6,
+    effect: { type: 'fanPerSecMult', value: 1.6 }
+  },
+  {
+    id: 'legacy-accelerator-2',
+    name: 'Legacy Momentum',
+    description: 'Global production +25% permanently.',
+    cost: 6,
+    requiresRebirths: 7,
+    effect: { type: 'globalMult', value: 1.25 }
+  },
+  {
     id: 'legacy-offline-rate',
     name: 'Offline Prep',
     description: 'Offline gains +10% (stacking).',
@@ -236,12 +291,28 @@ const LEGACY_UPGRADES = [
     effect: { type: 'offlineRate', value: 0.1 }
   },
   {
+    id: 'legacy-offline-rate-2',
+    name: 'Offline Operations',
+    description: 'Offline gains +15% (stacking).',
+    cost: 3,
+    requiresRebirths: 3,
+    effect: { type: 'offlineRate', value: 0.15 }
+  },
+  {
     id: 'legacy-offline-cap',
     name: 'Extended Logging',
     description: 'Offline cap +4 hours.',
     cost: 2,
     requiresRebirths: 2,
     effect: { type: 'offlineCap', value: 4 * 60 * 60 }
+  },
+  {
+    id: 'legacy-offline-cap-2',
+    name: 'Offline Archives',
+    description: 'Offline cap +6 hours.',
+    cost: 3,
+    requiresRebirths: 4,
+    effect: { type: 'offlineCap', value: 6 * 60 * 60 }
   }
 ];
 
@@ -801,6 +872,7 @@ function App() {
   const [authMessage, setAuthMessage] = useState('');
   const [cloudStatus, setCloudStatus] = useState('idle');
   const [rightPanelOrder, setRightPanelOrder] = useState(() => loadRightPanelOrder());
+  const [storyPopup, setStoryPopup] = useState(null);
   const [leaderboard, setLeaderboard] = useState([]);
   const [leaderboardMessage, setLeaderboardMessage] = useState('');
   const [cloudSaveAt, setCloudSaveAt] = useState(null);
@@ -1145,10 +1217,10 @@ function App() {
       ? Math.min(1, Math.max(0, (progressScore - prevThreshold) / (nextThreshold - prevThreshold)))
       : 1;
   const canRebirth = nextThreshold ? progressScore >= nextThreshold : false;
-  const postStoryRebirths = Math.max(0, gameState.rebirths - (REBIRTH_STEPS.length - 1));
   const baseLegacyGain = Math.max(1, Math.floor(Math.sqrt(progressScore / 800)));
-  const nextLegacyGain =
-    postStoryRebirths > 0 ? Math.max(1, Math.floor(baseLegacyGain * (1 + postStoryRebirths * 0.2))) : baseLegacyGain;
+  const postStoryGain =
+    gameState.rebirths >= REBIRTH_STEPS.length - 1 ? Math.max(1, Math.floor(progressScore / 7000)) : baseLegacyGain;
+  const nextLegacyGain = postStoryGain;
 
   const handleClick = () => {
     setGameState((prev) => ({
@@ -1268,6 +1340,10 @@ function App() {
       const built = nextState(prev);
       persistLocal(built, localMetaRef);
       saveCloudState(built, 'Rebirth saved.');
+      const storyStep = REBIRTH_STEPS[built.rebirths];
+      if (storyStep && storyStep.story) {
+        setStoryPopup({ title: storyStep.title, story: storyStep.story });
+      }
       return built;
     });
   };
@@ -1884,6 +1960,19 @@ function App() {
           })}
         </div>
       </section>
+
+      {storyPopup && (
+        <div className="modal-backdrop">
+          <div className="modal">
+            <p className="eyebrow">Story Rebirth</p>
+            <h2>{storyPopup.title}</h2>
+            <p className="muted">{storyPopup.story}</p>
+            <button className="btn primary" onClick={() => setStoryPopup(null)}>
+              Continue
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
