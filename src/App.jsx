@@ -446,6 +446,14 @@ const formatWhole = (value) =>
   new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(Math.floor(clampNumber(value)));
 
 const formatRate = (value) => `${formatNumber(value)}/s`;
+const formatSignedRate = (value) => {
+  const safe = clampNumber(value);
+  if (safe === 0) return `${formatNumber(0)}/s`;
+  const prefix = safe > 0 ? '+' : '';
+  return `${prefix}${formatNumber(safe)}/s`;
+};
+
+const formatPercent = (value) => `${Math.round(clampNumber(value) * 100)}%`;
 
 const formatCostLabel = (cost) =>
   Object.entries(cost)
@@ -560,6 +568,36 @@ const getBuildingInputRate = (building, outputRate, rates) => {
     default:
       return 0;
   }
+};
+
+const getEffectiveRates = (state, rates) => {
+  const dataSupply = Math.max(0, clampNumber(state.resources.data) + rates.dataPerSec);
+  const possibleInsights = Math.max(0, rates.insightPerSec);
+  const maxInsightsByData = rates.dataCostPerInsight > 0 ? dataSupply / rates.dataCostPerInsight : possibleInsights;
+  const actualInsights = Math.max(0, Math.min(possibleInsights, maxInsightsByData));
+  const dataAfter = dataSupply - actualInsights * rates.dataCostPerInsight;
+
+  const insightSupply = Math.max(0, clampNumber(state.resources.insights) + actualInsights);
+  const possibleWins = Math.max(0, rates.winPerSec);
+  const maxWinsByInsights = rates.insightCostPerWin > 0 ? insightSupply / rates.insightCostPerWin : possibleWins;
+  const actualWins = Math.max(0, Math.min(possibleWins, maxWinsByInsights));
+  const insightsAfter = insightSupply - actualWins * rates.insightCostPerWin;
+
+  const winSupply = Math.max(0, clampNumber(state.resources.wins) + actualWins);
+  const possibleFans = Math.max(0, rates.fanPerSec);
+  const maxFansByWins = rates.winCostPerFan > 0 ? winSupply / rates.winCostPerFan : possibleFans;
+  const actualFans = Math.max(0, Math.min(possibleFans, maxFansByWins));
+  const winsAfter = winSupply - actualFans * rates.winCostPerFan;
+
+  return {
+    dataNet: dataAfter - clampNumber(state.resources.data),
+    insightsNet: insightsAfter - clampNumber(state.resources.insights),
+    winsNet: winsAfter - clampNumber(state.resources.wins),
+    fansNet: actualFans,
+    insightsProduced: actualInsights,
+    winsProduced: actualWins,
+    fansProduced: actualFans
+  };
 };
 
 const applyDelta = (state, deltaSeconds) => {
@@ -973,6 +1011,7 @@ function App() {
 
   const rates = useMemo(() => getRates(gameState), [gameState]);
   const offlineSettings = useMemo(() => getOfflineSettings(gameState.legacyUpgrades || []), [gameState.legacyUpgrades]);
+  const effectiveRates = useMemo(() => getEffectiveRates(gameState, rates), [gameState, rates]);
   const conversionDemand = useMemo(
     () => ({
       dataUsePerSec: rates.insightPerSec * rates.dataCostPerInsight,
@@ -981,13 +1020,21 @@ function App() {
     }),
     [rates]
   );
-  const netRates = useMemo(
+  const conversionActual = useMemo(
     () => ({
-      data: rates.dataPerSec - conversionDemand.dataUsePerSec,
-      insights: rates.insightPerSec - conversionDemand.insightUsePerSec,
-      wins: rates.winPerSec - conversionDemand.winUsePerSec
+      dataUsePerSec: effectiveRates.insightsProduced * rates.dataCostPerInsight,
+      insightUsePerSec: effectiveRates.winsProduced * rates.insightCostPerWin,
+      winUsePerSec: effectiveRates.fansProduced * rates.winCostPerFan
     }),
-    [rates, conversionDemand]
+    [effectiveRates, rates]
+  );
+  const efficiency = useMemo(
+    () => ({
+      insights: rates.insightPerSec > 0 ? effectiveRates.insightsProduced / rates.insightPerSec : 1,
+      wins: rates.winPerSec > 0 ? effectiveRates.winsProduced / rates.winPerSec : 1,
+      fans: rates.fanPerSec > 0 ? effectiveRates.fansProduced / rates.fanPerSec : 1
+    }),
+    [effectiveRates, rates]
   );
   const championshipRequirement = useMemo(
     () => getChampionshipRequirement(gameState.resources.titles),
@@ -1304,9 +1351,17 @@ function App() {
           </div>
           <p className="stat-value">{formatNumber(gameState.resources.data)}</p>
           <p className="stat-meta">Gross: {formatRate(rates.dataPerSec)}</p>
-          <p className="stat-meta">Required for insights: {formatRate(conversionDemand.dataUsePerSec)}</p>
           <p className="stat-meta">
-            Net if supplied: <span className="strong">{formatRate(netRates.data)}</span>
+            Used for insights: {formatRate(conversionActual.dataUsePerSec)} of {formatRate(conversionDemand.dataUsePerSec)}
+            {efficiency.insights < 0.999 && (
+              <span className="pill warn">starved ({formatPercent(efficiency.insights)})</span>
+            )}
+          </p>
+          <p className="stat-meta">
+            Net now:{' '}
+            <span className={`strong ${effectiveRates.dataNet < 0 ? 'negative' : ''}`}>
+              {formatSignedRate(effectiveRates.dataNet)}
+            </span>
           </p>
         </div>
         <div className="stat-card insights">
@@ -1316,9 +1371,17 @@ function App() {
           </div>
           <p className="stat-value">{formatNumber(gameState.resources.insights)}</p>
           <p className="stat-meta">Gross: {formatRate(rates.insightPerSec)}</p>
-          <p className="stat-meta">Required for wins: {formatRate(conversionDemand.insightUsePerSec)}</p>
           <p className="stat-meta">
-            Net if supplied: <span className="strong">{formatRate(netRates.insights)}</span>
+            Used for wins: {formatRate(conversionActual.insightUsePerSec)} of {formatRate(conversionDemand.insightUsePerSec)}
+            {efficiency.wins < 0.999 && (
+              <span className="pill warn">starved ({formatPercent(efficiency.wins)})</span>
+            )}
+          </p>
+          <p className="stat-meta">
+            Net now:{' '}
+            <span className={`strong ${effectiveRates.insightsNet < 0 ? 'negative' : ''}`}>
+              {formatSignedRate(effectiveRates.insightsNet)}
+            </span>
           </p>
         </div>
         <div className="stat-card wins">
@@ -1328,9 +1391,15 @@ function App() {
           </div>
           <p className="stat-value">{formatNumber(gameState.resources.wins)}</p>
           <p className="stat-meta">Gross: {formatRate(rates.winPerSec)}</p>
-          <p className="stat-meta">Required for fans: {formatRate(conversionDemand.winUsePerSec)}</p>
           <p className="stat-meta">
-            Net if supplied: <span className="strong">{formatRate(netRates.wins)}</span>
+            Used for fans: {formatRate(conversionActual.winUsePerSec)} of {formatRate(conversionDemand.winUsePerSec)}
+            {efficiency.fans < 0.999 && <span className="pill warn">starved ({formatPercent(efficiency.fans)})</span>}
+          </p>
+          <p className="stat-meta">
+            Net now:{' '}
+            <span className={`strong ${effectiveRates.winsNet < 0 ? 'negative' : ''}`}>
+              {formatSignedRate(effectiveRates.winsNet)}
+            </span>
           </p>
         </div>
         <div className="stat-card fans">
