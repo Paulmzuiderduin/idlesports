@@ -454,6 +454,9 @@ p {
   font-size: 12px;
   font-weight: 600;
   color: var(--ink);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .pill.accent {
@@ -469,6 +472,12 @@ p {
 .pill.subtle {
   background: rgba(148, 163, 184, 0.2);
   color: #475569;
+}
+
+.pill-effect {
+  font-weight: 500;
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .stat-meta .pill {

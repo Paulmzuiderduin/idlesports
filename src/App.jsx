@@ -1633,14 +1633,18 @@ function App() {
               <div className="purchased">
                 <p className="muted">Purchased</p>
                 <div className="pill-row">
-                  {purchasedUpgrades.map((upgrade) => (
+                {purchasedUpgrades.map((upgrade) => {
+                  const effectLabel = getUpgradeEffectLabel(upgrade);
+                  return (
                     <span key={upgrade.id} className="pill">
                       {upgrade.name}
+                      {effectLabel && <span className="pill-effect"> · {effectLabel}</span>}
                     </span>
-                  ))}
-                </div>
+                  );
+                })}
               </div>
-            )}
+            </div>
+          )}
           </div>
         </div>
 
@@ -1796,14 +1800,18 @@ function App() {
                     <div className="purchased">
                       <p className="muted">Unlocked legacy upgrades</p>
                       <div className="pill-row">
-                        {purchasedLegacy.map((upgrade) => (
+                      {purchasedLegacy.map((upgrade) => {
+                        const effectLabel = getUpgradeEffectLabel(upgrade);
+                        return (
                           <span key={upgrade.id} className="pill accent">
                             {upgrade.name}
+                            {effectLabel && <span className="pill-effect"> · {effectLabel}</span>}
                           </span>
-                        ))}
-                      </div>
+                        );
+                      })}
                     </div>
-                  )}
+                  </div>
+                )}
                 </div>
               );
             }
