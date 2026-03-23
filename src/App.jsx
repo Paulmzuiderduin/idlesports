@@ -3,6 +3,7 @@ import { isSupabaseConfigured, supabase } from './lib/supabase';
 
 const STORAGE_KEY = 'idlesports_state';
 const STORAGE_BACKUP_KEY = 'idlesports_state_backup';
+const STORAGE_META_KEY = 'idlesports_state_meta';
 const TICK_MS = 250;
 const OFFLINE_BASE_RATE = 0.1;
 const OFFLINE_BASE_CAP_SECONDS = 6 * 60 * 60;
@@ -235,6 +236,7 @@ const DEFAULT_STATE = {
   profileName: '',
   rebirths: 0,
   legacyPoints: 0,
+  saveId: 0,
   lastUpdated: Date.now()
 };
 
@@ -312,6 +314,7 @@ const normalizeState = (raw) => {
     profileName: typeof raw?.profileName === 'string' ? raw.profileName : '',
     rebirths: clampNumber(raw?.rebirths),
     legacyPoints: clampNumber(raw?.legacyPoints),
+    saveId: clampNumber(raw?.saveId),
     lastUpdated: clampNumber(raw?.lastUpdated) || Date.now()
   };
 
@@ -364,6 +367,72 @@ const loadLocalState = () => {
     }
     return { ...DEFAULT_STATE };
   }
+};
+
+const loadLocalMeta = () => {
+  if (typeof window === 'undefined') return { savedAt: 0 };
+  try {
+    const raw = window.localStorage.getItem(STORAGE_META_KEY);
+    if (!raw) return { savedAt: 0 };
+    const parsed = JSON.parse(raw);
+    return { savedAt: clampNumber(parsed?.savedAt) };
+  } catch {
+    return { savedAt: 0 };
+  }
+};
+
+const persistLocal = (state, metaRef) => {
+  if (typeof window === 'undefined') return;
+  const snapshot = normalizeState(state);
+  const savedAt = Date.now();
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+  window.localStorage.setItem(STORAGE_BACKUP_KEY, JSON.stringify(snapshot));
+  window.localStorage.setItem(STORAGE_META_KEY, JSON.stringify({ savedAt }));
+  if (metaRef) metaRef.current = { savedAt };
+};
+
+const getProgressScore = (state) => {
+  if (!state) return 0;
+  const resources = state.resources || {};
+  return (
+    clampNumber(resources.data) +
+    clampNumber(resources.insights) * 5 +
+    clampNumber(resources.wins) * 20 +
+    clampNumber(resources.fans) * 2 +
+    clampNumber(resources.titles) * 500
+  );
+};
+
+const preferState = (localState, cloudState, localMeta, cloudUpdatedAt) => {
+  if (!cloudState) return localState;
+  if (!localState) return cloudState;
+  const cloudEmpty = isEmptyState(cloudState);
+  const localEmpty = isEmptyState(localState);
+  if (cloudEmpty && !localEmpty) return localState;
+  if (!cloudEmpty && localEmpty) return cloudState;
+
+  const localRebirths = clampNumber(localState.rebirths);
+  const cloudRebirths = clampNumber(cloudState.rebirths);
+  if (localRebirths !== cloudRebirths) return localRebirths > cloudRebirths ? localState : cloudState;
+
+  const localLegacy = clampNumber(localState.legacyPoints);
+  const cloudLegacy = clampNumber(cloudState.legacyPoints);
+  if (localLegacy !== cloudLegacy) return localLegacy > cloudLegacy ? localState : cloudState;
+
+  const localScore = getProgressScore(localState);
+  const cloudScore = getProgressScore(cloudState);
+  if (localScore !== cloudScore) return localScore > cloudScore ? localState : cloudState;
+
+  const localSavedAt = clampNumber(localMeta?.savedAt);
+  const cloudSavedAt = clampNumber(cloudUpdatedAt ? Date.parse(cloudUpdatedAt) : 0);
+  if (localSavedAt || cloudSavedAt) {
+    if (cloudSavedAt >= localSavedAt) return cloudState;
+    return localState;
+  }
+
+  const localUpdated = clampNumber(localState.lastUpdated);
+  const cloudUpdated = clampNumber(cloudState.lastUpdated);
+  return cloudUpdated >= localUpdated ? cloudState : localState;
 };
 
 const formatNumber = (value) => {
@@ -623,7 +692,9 @@ function App() {
   const hasHydrated = useRef(false);
   const saveTimer = useRef(null);
   const stateRef = useRef(gameState);
+  const localMetaRef = useRef(loadLocalMeta());
   const lastCloudSave = useRef(0);
+  const pendingCloudSave = useRef(null);
 
   useEffect(() => {
     stateRef.current = gameState;
@@ -676,10 +747,7 @@ function App() {
       setOfflineSummary({ elapsedSeconds, capped, rate, capSeconds });
     }
     setGameState(nextState);
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
-      window.localStorage.setItem(STORAGE_BACKUP_KEY, JSON.stringify(nextState));
-    }
+    persistLocal(nextState, localMetaRef);
   }, [gameState]);
 
   useEffect(() => {
@@ -700,13 +768,30 @@ function App() {
     if (typeof window === 'undefined') return undefined;
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(gameState));
-      window.localStorage.setItem(STORAGE_BACKUP_KEY, JSON.stringify(gameState));
+      persistLocal(gameState, localMetaRef);
     }, 500);
     return () => {
       if (saveTimer.current) window.clearTimeout(saveTimer.current);
     };
   }, [gameState]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const handlePersist = () => {
+      persistLocal(stateRef.current, localMetaRef);
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        handlePersist();
+      }
+    };
+    window.addEventListener('beforeunload', handlePersist);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      window.removeEventListener('beforeunload', handlePersist);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, []);
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase || !session?.user) {
@@ -729,23 +814,27 @@ function App() {
       }
 
       const localState = stateRef.current;
+      const localMeta = localMetaRef.current;
       if (data?.state) {
         const cloudState = normalizeState(data.state);
-        if ((cloudState.lastUpdated || 0) >= (localState.lastUpdated || 0)) {
+        const preferred = preferState(localState, cloudState, localMeta, data.updated_at);
+        if (preferred === cloudState) {
+          persistLocal(cloudState, localMetaRef);
           if (isMounted) setGameState(cloudState);
+          if (data.updated_at) {
+            const stamp = Date.parse(data.updated_at);
+            if (Number.isFinite(stamp)) {
+              lastCloudSave.current = stamp;
+              setCloudSaveAt(stamp);
+              const elapsed = Math.floor((Date.now() - stamp) / 1000);
+              setCloudSaveCountdown(Math.max(0, 15 - elapsed));
+            }
+          }
         } else {
-          await supabase.from('idle_saves').upsert({
-            user_id: session.user.id,
-            state: localState,
-            updated_at: new Date().toISOString()
-          });
+          await saveCloudState(localState);
         }
       } else {
-        await supabase.from('idle_saves').upsert({
-          user_id: session.user.id,
-          state: localState,
-          updated_at: new Date().toISOString()
-        });
+        await saveCloudState(localState);
       }
 
       if (isMounted) setCloudStatus('ready');
@@ -775,7 +864,10 @@ function App() {
       };
 
       const { error } = await supabase.from('idle_saves').upsert(payload);
-      if (error || cancelled) return;
+      if (error || cancelled) {
+        if (error) setCloudStatus('error');
+        return;
+      }
 
       await supabase.from('leaderboard_entries').upsert({
         user_id: session.user.id,
@@ -797,6 +889,50 @@ function App() {
       cancelled = true;
     };
   }, [gameState, session, cloudStatus]);
+
+  useEffect(() => {
+    if (!session?.user || cloudStatus !== 'ready' || !pendingCloudSave.current) return;
+    const pending = pendingCloudSave.current;
+    pendingCloudSave.current = null;
+    saveCloudState(pending.state, pending.message);
+  }, [session?.user, cloudStatus]);
+
+  const saveCloudState = async (stateToSave, message) => {
+    if (!isSupabaseConfigured || !supabase) return false;
+    if (!session?.user) {
+      pendingCloudSave.current = { state: stateToSave, message };
+      return false;
+    }
+    const displayName = getDisplayName(stateToSave, session);
+    const payload = {
+      user_id: session.user.id,
+      state: stateToSave,
+      updated_at: new Date().toISOString()
+    };
+    const { error } = await supabase.from('idle_saves').upsert(payload);
+    if (error) {
+      setCloudStatus('error');
+      return false;
+    }
+    await supabase.from('leaderboard_entries').upsert({
+      user_id: session.user.id,
+      display_name: displayName,
+      titles: Math.floor(stateToSave.resources.titles),
+      wins: Math.floor(stateToSave.resources.wins),
+      updated_at: new Date().toISOString()
+    });
+    const stamp = Date.now();
+    lastCloudSave.current = stamp;
+    setCloudSaveAt(stamp);
+    setCloudSaveCountdown(15);
+    setCloudStatus('ready');
+    if (message) setLeaderboardMessage(message);
+    return true;
+  };
+
+  const handleSaveNow = async () => {
+    await saveCloudState(stateRef.current, 'Saved now.');
+  };
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) return;
@@ -968,6 +1104,7 @@ function App() {
     if (typeof window !== 'undefined') {
       window.localStorage.removeItem(STORAGE_KEY);
       window.localStorage.removeItem(STORAGE_BACKUP_KEY);
+      window.localStorage.removeItem(STORAGE_META_KEY);
     }
   };
 
@@ -980,14 +1117,20 @@ function App() {
       return;
     }
     setOfflineSummary(null);
-    setGameState((prev) => ({
+    const nextState = (prev) => ({
       ...DEFAULT_STATE,
       legacyUpgrades: prev.legacyUpgrades,
       rebirths: prev.rebirths + 1,
       legacyPoints: prev.legacyPoints + nextLegacyGain,
       lastUpdated: Date.now(),
       profileName: prev.profileName
-    }));
+    });
+    setGameState((prev) => {
+      const built = nextState(prev);
+      persistLocal(built, localMetaRef);
+      saveCloudState(built, 'Rebirth saved.');
+      return built;
+    });
   };
 
   const handleMagicLink = async () => {
@@ -1069,10 +1212,16 @@ function App() {
                 <p className="muted">
                   Next save: {cloudSaveAt && cloudSaveCountdown != null ? `${cloudSaveCountdown}s` : 'waiting'}
                 </p>
+                {leaderboardMessage && <p className="muted">{leaderboardMessage}</p>}
               </div>
-              <button className="btn ghost" onClick={handleSignOut}>
-                Sign out
-              </button>
+              <div className="auth-actions">
+                <button className="btn ghost" onClick={handleSaveNow}>
+                  Save now
+                </button>
+                <button className="btn ghost" onClick={handleSignOut}>
+                  Sign out
+                </button>
+              </div>
             </div>
           )}
 
@@ -1506,7 +1655,6 @@ function App() {
               </label>
             </div>
             {!isSupabaseConfigured && <p className="muted">Supabase not configured yet.</p>}
-            {leaderboardMessage && <p className="muted">{leaderboardMessage}</p>}
             {isSupabaseConfigured && leaderboard.length === 0 && <p className="muted">No entries yet.</p>}
             {leaderboard.length > 0 && (
               <div className="leaderboard">
