@@ -26,6 +26,7 @@ const BUILDINGS = [
     description: 'Collect raw match data from feeds.',
     baseCost: 10,
     costCurrency: 'data',
+    outputCurrency: 'data',
     costMult: 1.15
   },
   {
@@ -34,6 +35,7 @@ const BUILDINGS = [
     description: 'Convert data into usable insights.',
     baseCost: 60,
     costCurrency: 'data',
+    outputCurrency: 'insights',
     costMult: 1.16
   },
   {
@@ -42,6 +44,7 @@ const BUILDINGS = [
     description: 'Turn insights into wins.',
     baseCost: 240,
     costCurrency: 'insights',
+    outputCurrency: 'wins',
     costMult: 1.17
   },
   {
@@ -50,6 +53,7 @@ const BUILDINGS = [
     description: 'Convert wins into long term fan growth.',
     baseCost: 600,
     costCurrency: 'wins',
+    outputCurrency: 'fans',
     costMult: 1.18
   }
 ];
@@ -462,6 +466,33 @@ const getBuildingPerUnitRate = (building, modifiers) => {
   }
 };
 
+const getBuildingInputCurrency = (building) => {
+  switch (building?.id) {
+    case 'analyst':
+      return 'data';
+    case 'strategy':
+      return 'insights';
+    case 'marketing':
+      return 'wins';
+    default:
+      return null;
+  }
+};
+
+const getBuildingInputRate = (building, outputRate, rates) => {
+  if (!building) return 0;
+  switch (building.id) {
+    case 'analyst':
+      return outputRate * rates.dataCostPerInsight;
+    case 'strategy':
+      return outputRate * rates.insightCostPerWin;
+    case 'marketing':
+      return outputRate * rates.winCostPerFan;
+    default:
+      return 0;
+  }
+};
+
 const applyDelta = (state, deltaSeconds) => {
   const nextState = {
     ...state,
@@ -479,19 +510,19 @@ const applyDelta = (state, deltaSeconds) => {
 
     const possibleInsights = rates.insightPerSec * dt;
     const maxByData = nextState.resources.data / rates.dataCostPerInsight;
-    const actualInsights = Math.min(possibleInsights, maxByData);
+    const actualInsights = Math.min(possibleInsights, Math.max(0, maxByData));
     nextState.resources.data -= actualInsights * rates.dataCostPerInsight;
     nextState.resources.insights += actualInsights;
 
     const possibleWins = rates.winPerSec * dt;
     const maxByInsights = nextState.resources.insights / rates.insightCostPerWin;
-    const actualWins = Math.min(possibleWins, maxByInsights);
+    const actualWins = Math.min(possibleWins, Math.max(0, maxByInsights));
     nextState.resources.insights -= actualWins * rates.insightCostPerWin;
     nextState.resources.wins += actualWins;
 
     const possibleFans = rates.fanPerSec * dt;
     const maxByWins = nextState.resources.wins / rates.winCostPerFan;
-    const actualFans = Math.min(possibleFans, maxByWins);
+    const actualFans = Math.min(possibleFans, Math.max(0, maxByWins));
     nextState.resources.wins -= actualFans * rates.winCostPerFan;
     nextState.resources.fans += actualFans;
 
@@ -502,6 +533,7 @@ const applyDelta = (state, deltaSeconds) => {
   nextState.resources.insights = Math.max(0, nextState.resources.insights);
   nextState.resources.wins = Math.max(0, nextState.resources.wins);
   nextState.resources.fans = Math.max(0, nextState.resources.fans);
+  nextState.resources.titles = Math.max(0, nextState.resources.titles);
 
   return nextState;
 };
@@ -541,6 +573,16 @@ const getBuildingCost = (building, owned, amount) => {
   return base * (Math.pow(mult, owned) * (Math.pow(mult, amount) - 1)) / (mult - 1);
 };
 
+const getBuildingRefund = (building, owned, amount, refundRate = 0.5) => {
+  if (amount <= 0 || owned <= 0) return 0;
+  const base = building.baseCost;
+  const mult = building.costMult;
+  const sellAmount = Math.min(amount, owned);
+  const startIndex = owned - sellAmount;
+  const totalCost = base * (Math.pow(mult, startIndex) * (Math.pow(mult, sellAmount) - 1)) / (mult - 1);
+  return totalCost * refundRate;
+};
+
 const canAffordUpgrade = (resources, cost) => {
   return Object.entries(cost).every(([key, value]) => resources[key] >= value);
 };
@@ -575,6 +617,8 @@ function App() {
   const [cloudStatus, setCloudStatus] = useState('idle');
   const [leaderboard, setLeaderboard] = useState([]);
   const [leaderboardMessage, setLeaderboardMessage] = useState('');
+  const [cloudSaveAt, setCloudSaveAt] = useState(null);
+  const [cloudSaveCountdown, setCloudSaveCountdown] = useState(null);
 
   const hasHydrated = useRef(false);
   const saveTimer = useRef(null);
@@ -590,6 +634,16 @@ function App() {
     const timer = window.setTimeout(() => setLeaderboardMessage(''), 2000);
     return () => window.clearTimeout(timer);
   }, [leaderboardMessage]);
+
+  useEffect(() => {
+    if (!cloudSaveAt) return undefined;
+    const interval = window.setInterval(() => {
+      const elapsed = Math.floor((Date.now() - cloudSaveAt) / 1000);
+      const remaining = Math.max(0, 15 - elapsed);
+      setCloudSaveCountdown(remaining);
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [cloudSaveAt]);
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
@@ -708,25 +762,40 @@ function App() {
     if (!isSupabaseConfigured || !supabase || !session?.user || cloudStatus !== 'ready') return;
     const now = Date.now();
     if (now - lastCloudSave.current < 15000) return;
-    lastCloudSave.current = now;
 
-    const state = stateRef.current;
-    const displayName = getDisplayName(state, session);
+    let cancelled = false;
+    const saveCloud = async () => {
+      const state = stateRef.current;
+      const displayName = getDisplayName(state, session);
 
-    const payload = {
-      user_id: session.user.id,
-      state,
-      updated_at: new Date().toISOString()
+      const payload = {
+        user_id: session.user.id,
+        state,
+        updated_at: new Date().toISOString()
+      };
+
+      const { error } = await supabase.from('idle_saves').upsert(payload);
+      if (error || cancelled) return;
+
+      await supabase.from('leaderboard_entries').upsert({
+        user_id: session.user.id,
+        display_name: displayName,
+        titles: Math.floor(state.resources.titles),
+        wins: Math.floor(state.resources.wins),
+        updated_at: new Date().toISOString()
+      });
+
+      const stamp = Date.now();
+      lastCloudSave.current = stamp;
+      setCloudSaveAt(stamp);
+      setCloudSaveCountdown(15);
     };
 
-    supabase.from('idle_saves').upsert(payload);
-    supabase.from('leaderboard_entries').upsert({
-      user_id: session.user.id,
-      display_name: displayName,
-      titles: Math.floor(state.resources.titles),
-      wins: Math.floor(state.resources.wins),
-      updated_at: new Date().toISOString()
-    });
+    saveCloud();
+
+    return () => {
+      cancelled = true;
+    };
   }, [gameState, session, cloudStatus]);
 
   useEffect(() => {
@@ -768,6 +837,22 @@ function App() {
 
   const rates = useMemo(() => getRates(gameState), [gameState]);
   const offlineSettings = useMemo(() => getOfflineSettings(gameState.legacyUpgrades || []), [gameState.legacyUpgrades]);
+  const conversionDemand = useMemo(
+    () => ({
+      dataUsePerSec: rates.insightPerSec * rates.dataCostPerInsight,
+      insightUsePerSec: rates.winPerSec * rates.insightCostPerWin,
+      winUsePerSec: rates.fanPerSec * rates.winCostPerFan
+    }),
+    [rates]
+  );
+  const netRates = useMemo(
+    () => ({
+      data: rates.dataPerSec - conversionDemand.dataUsePerSec,
+      insights: rates.insightPerSec - conversionDemand.insightUsePerSec,
+      wins: rates.winPerSec - conversionDemand.winUsePerSec
+    }),
+    [rates, conversionDemand]
+  );
   const championshipRequirement = useMemo(
     () => getChampionshipRequirement(gameState.resources.titles),
     [gameState.resources.titles]
@@ -818,6 +903,29 @@ function App() {
         buildings: {
           ...prev.buildings,
           [buildingId]: owned + buyAmount
+        }
+      };
+    });
+  };
+
+  const handleSellBuilding = (buildingId) => {
+    const building = BUILDINGS.find((item) => item.id === buildingId);
+    if (!building) return;
+    setGameState((prev) => {
+      const owned = prev.buildings[buildingId] || 0;
+      if (owned <= 0) return prev;
+      const sellAmount = Math.min(buyAmount, owned);
+      const refund = getBuildingRefund(building, owned, sellAmount);
+      const currency = building.costCurrency || 'data';
+      return {
+        ...prev,
+        resources: {
+          ...prev.resources,
+          [currency]: (prev.resources[currency] || 0) + refund
+        },
+        buildings: {
+          ...prev.buildings,
+          [buildingId]: owned - sellAmount
         }
       };
     });
@@ -954,6 +1062,13 @@ function App() {
                 <p className="muted">Signed in</p>
                 <p className="strong">{session.user.email}</p>
                 <p className="muted">Cloud save: {cloudStatus}</p>
+                <p className="muted">Autosaves every 15s while active.</p>
+                <p className="muted">
+                  Last save: {cloudSaveAt ? `${Math.floor((Date.now() - cloudSaveAt) / 1000)}s ago` : 'not yet'}
+                </p>
+                <p className="muted">
+                  Next save: {cloudSaveAt && cloudSaveCountdown != null ? `${cloudSaveCountdown}s` : 'waiting'}
+                </p>
               </div>
               <button className="btn ghost" onClick={handleSignOut}>
                 Sign out
@@ -1039,7 +1154,11 @@ function App() {
             <p className="stat-label">Data</p>
           </div>
           <p className="stat-value">{formatNumber(gameState.resources.data)}</p>
-          <p className="stat-meta">{formatRate(rates.dataPerSec)}</p>
+          <p className="stat-meta">Gross: {formatRate(rates.dataPerSec)}</p>
+          <p className="stat-meta">Required for insights: {formatRate(conversionDemand.dataUsePerSec)}</p>
+          <p className="stat-meta">
+            Net if supplied: <span className="strong">{formatRate(netRates.data)}</span>
+          </p>
         </div>
         <div className="stat-card insights">
           <div className="stat-head">
@@ -1047,7 +1166,11 @@ function App() {
             <p className="stat-label">Insights</p>
           </div>
           <p className="stat-value">{formatNumber(gameState.resources.insights)}</p>
-          <p className="stat-meta">{formatRate(rates.insightPerSec)}</p>
+          <p className="stat-meta">Gross: {formatRate(rates.insightPerSec)}</p>
+          <p className="stat-meta">Required for wins: {formatRate(conversionDemand.insightUsePerSec)}</p>
+          <p className="stat-meta">
+            Net if supplied: <span className="strong">{formatRate(netRates.insights)}</span>
+          </p>
         </div>
         <div className="stat-card wins">
           <div className="stat-head">
@@ -1055,7 +1178,11 @@ function App() {
             <p className="stat-label">Wins</p>
           </div>
           <p className="stat-value">{formatNumber(gameState.resources.wins)}</p>
-          <p className="stat-meta">{formatRate(rates.winPerSec)}</p>
+          <p className="stat-meta">Gross: {formatRate(rates.winPerSec)}</p>
+          <p className="stat-meta">Required for fans: {formatRate(conversionDemand.winUsePerSec)}</p>
+          <p className="stat-meta">
+            Net if supplied: <span className="strong">{formatRate(netRates.wins)}</span>
+          </p>
         </div>
         <div className="stat-card fans">
           <div className="stat-head">
@@ -1104,19 +1231,39 @@ function App() {
                 const owned = gameState.buildings[building.id] || 0;
                 const cost = getBuildingCost(building, owned, buyAmount);
                 const currency = building.costCurrency || 'data';
+                const outputCurrency = building.outputCurrency || currency;
                 const affordable = (gameState.resources[currency] || 0) >= cost;
                 const perUnitRate = getBuildingPerUnitRate(building, rates.modifiers);
+                const perUnitInput = getBuildingInputRate(building, perUnitRate, rates);
+                const inputCurrency = getBuildingInputCurrency(building);
+                const totalOutput = perUnitRate * owned;
+                const totalInput = perUnitInput * owned;
+                const refund = getBuildingRefund(building, owned, buyAmount);
                 return (
-                  <div key={building.id} className={`card ${currency}`}>
+                  <div key={building.id} className={`card ${outputCurrency}`}>
                     <div>
                       <div className="card-title-row">
-                        <Icon name={currency} />
+                        <Icon name={outputCurrency} />
                         <p className="card-title">{building.name}</p>
                       </div>
                       <p className="muted">{building.description}</p>
                       <p className="muted">Owned: {owned}</p>
-                      <p className="muted">Each: +{formatNumber(perUnitRate)} {currency}/s</p>
-                      <p className="muted">Total: +{formatNumber(perUnitRate * owned)} {currency}/s</p>
+                      <p className="muted">
+                        Each: +{formatNumber(perUnitRate)} {outputCurrency}/s
+                      </p>
+                      {perUnitInput > 0 && inputCurrency && (
+                        <p className="muted">
+                          Each uses {formatNumber(perUnitInput)} {inputCurrency}/s
+                        </p>
+                      )}
+                      <p className="muted">
+                        Total: +{formatNumber(totalOutput)} {outputCurrency}/s
+                      </p>
+                      {totalInput > 0 && inputCurrency && (
+                        <p className="muted">
+                          Total uses {formatNumber(totalInput)} {inputCurrency}/s
+                        </p>
+                      )}
                     </div>
                     <button
                       className={`btn ${affordable ? 'primary' : 'disabled'}`}
@@ -1124,6 +1271,13 @@ function App() {
                       disabled={!affordable}
                     >
                       Buy ({formatNumber(cost)} {currency})
+                    </button>
+                    <button
+                      className={`btn ghost ${owned > 0 ? '' : 'disabled'}`}
+                      onClick={() => handleSellBuilding(building.id)}
+                      disabled={owned <= 0}
+                    >
+                      Sell (+{formatNumber(refund)} {currency})
                     </button>
                   </div>
                 );
