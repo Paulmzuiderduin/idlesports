@@ -1218,9 +1218,14 @@ function App() {
       : 1;
   const canRebirth = nextThreshold ? progressScore >= nextThreshold : false;
   const baseLegacyGain = Math.max(1, Math.floor(Math.sqrt(progressScore / 800)));
-  const postStoryGain =
-    gameState.rebirths >= REBIRTH_STEPS.length - 1 ? Math.max(1, Math.floor(progressScore / 7000)) : baseLegacyGain;
-  const nextLegacyGain = postStoryGain;
+  const lastStoryIndex = REBIRTH_STEPS.length - 1;
+  const postStoryIndex = Math.max(0, gameState.rebirths - lastStoryIndex + 1);
+  const postStoryDivisor =
+    postStoryIndex > 0
+      ? Math.round(REBIRTH_STEPS[lastStoryIndex].threshold * Math.pow(REBIRTH_POST_SCALE, postStoryIndex))
+      : null;
+  const postStoryGain = postStoryDivisor ? Math.max(1, Math.floor(progressScore / postStoryDivisor)) : baseLegacyGain;
+  const nextLegacyGain = gameState.rebirths >= lastStoryIndex ? postStoryGain : baseLegacyGain;
 
   const handleClick = () => {
     setGameState((prev) => ({
@@ -1800,15 +1805,16 @@ function App() {
                       <span>Legacy points</span>
                       <span>{formatWhole(gameState.legacyPoints)} available</span>
                     </div>
-                    <div className="snapshot">
-                      <span>Combined score: {formatWhole(progressScore)}</span>
-                      <span className={scoreRate < 0 ? 'negative' : ''}>
-                        Score rate: {formatSignedRate(scoreRate)}
-                      </span>
-                      <span>
-                        ETA to next rebirth:{' '}
-                        {nextThreshold
-                          ? scoreRate > 0
+              <div className="snapshot">
+                <span>Combined score: {formatWhole(progressScore)}</span>
+                <span className={scoreRate < 0 ? 'negative' : ''}>
+                  Score rate: {formatSignedRate(scoreRate)}
+                </span>
+                {postStoryDivisor && <span>Legacy rate: 1 per {formatWhole(postStoryDivisor)} score</span>}
+                <span>
+                  ETA to next rebirth:{' '}
+                  {nextThreshold
+                    ? scoreRate > 0
                             ? formatDuration(timeToNext || 0)
                             : 'stalled'
                           : 'max tier'}
