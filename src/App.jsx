@@ -3,7 +3,8 @@ import { isSupabaseConfigured, supabase } from './lib/supabase';
 
 const STORAGE_KEY = 'idlesports_state';
 const TICK_MS = 250;
-const OFFLINE_CAP_SECONDS = 6 * 60 * 60;
+const OFFLINE_BASE_RATE = 0.1;
+const OFFLINE_BASE_CAP_SECONDS = 6 * 60 * 60;
 
 const BASE = {
   dataPerClick: 1,
@@ -11,9 +12,6 @@ const BASE = {
   analystInsightPerSec: 0.25,
   strategyWinPerSec: 0.08,
   marketingFanPerSec: 0.4,
-  dataCostPerInsight: 3,
-  insightCostPerWin: 2,
-  winCostPerFan: 1,
   fanDataPerSec: 0.02
 };
 
@@ -23,6 +21,7 @@ const BUILDINGS = [
     name: 'Scout Bots',
     description: 'Collect raw match data from feeds.',
     baseCost: 10,
+    costCurrency: 'data',
     costMult: 1.15
   },
   {
@@ -30,6 +29,7 @@ const BUILDINGS = [
     name: 'Analyst Pods',
     description: 'Convert data into usable insights.',
     baseCost: 60,
+    costCurrency: 'data',
     costMult: 1.16
   },
   {
@@ -37,6 +37,7 @@ const BUILDINGS = [
     name: 'Strategy Lab',
     description: 'Turn insights into wins.',
     baseCost: 240,
+    costCurrency: 'insights',
     costMult: 1.17
   },
   {
@@ -44,6 +45,7 @@ const BUILDINGS = [
     name: 'Fan Outreach',
     description: 'Convert wins into long term fan growth.',
     baseCost: 600,
+    costCurrency: 'wins',
     costMult: 1.18
   }
 ];
@@ -93,7 +95,7 @@ const UPGRADES = [
   }
 ];
 
-const MILESTONES = [
+const REBIRTH_STEPS = [
   {
     id: 'paper',
     title: 'Pencil & Paper',
@@ -138,6 +140,73 @@ const MILESTONES = [
   }
 ];
 
+const LEGACY_UPGRADES = [
+  {
+    id: 'legacy-queries',
+    name: 'Legacy Query Engine',
+    description: 'Data per click +2 permanently.',
+    cost: 1,
+    requiresRebirths: 0,
+    effect: { type: 'clickBonus', value: 2 }
+  },
+  {
+    id: 'legacy-warehouse',
+    name: 'Legacy Warehouse',
+    description: 'Data per second +25% permanently.',
+    cost: 2,
+    requiresRebirths: 1,
+    effect: { type: 'dataPerSecMult', value: 1.25 }
+  },
+  {
+    id: 'legacy-analysts',
+    name: 'Legacy Analysts',
+    description: 'Insight conversion +35% permanently.',
+    cost: 2,
+    requiresRebirths: 2,
+    effect: { type: 'insightPerSecMult', value: 1.35 }
+  },
+  {
+    id: 'legacy-strategy',
+    name: 'Legacy Strategy',
+    description: 'Win conversion +40% permanently.',
+    cost: 3,
+    requiresRebirths: 3,
+    effect: { type: 'winPerSecMult', value: 1.4 }
+  },
+  {
+    id: 'legacy-network',
+    name: 'Legacy Fan Network',
+    description: 'Fan conversion +45% permanently.',
+    cost: 3,
+    requiresRebirths: 4,
+    effect: { type: 'fanPerSecMult', value: 1.45 }
+  },
+  {
+    id: 'legacy-accelerator',
+    name: 'Legacy Accelerator',
+    description: 'Global production +15% permanently.',
+    cost: 5,
+    requiresRebirths: 5,
+    effect: { type: 'globalMult', value: 1.15 }
+  },
+  {
+    id: 'legacy-offline-rate',
+    name: 'Offline Prep',
+    description: 'Offline gains +10% (stacking).',
+    cost: 2,
+    requiresRebirths: 1,
+    effect: { type: 'offlineRate', value: 0.1 }
+  },
+  {
+    id: 'legacy-offline-cap',
+    name: 'Extended Logging',
+    description: 'Offline cap +4 hours.',
+    cost: 2,
+    requiresRebirths: 2,
+    effect: { type: 'offlineCap', value: 4 * 60 * 60 }
+  }
+];
+
 const DEFAULT_STATE = {
   resources: {
     data: 0,
@@ -153,12 +222,69 @@ const DEFAULT_STATE = {
     marketing: 0
   },
   upgrades: [],
+  legacyUpgrades: [],
   totalClicks: 0,
   profileName: '',
+  rebirths: 0,
+  legacyPoints: 0,
   lastUpdated: Date.now()
 };
 
 const clampNumber = (value) => (Number.isFinite(value) ? value : 0);
+
+const Icon = ({ name }) => {
+  switch (name) {
+    case 'data':
+      return (
+        <svg className="icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 6c0-1.66 3.58-3 8-3s8 1.34 8 3-3.58 3-8 3-8-1.34-8-3Z" />
+          <path d="M4 6v6c0 1.66 3.58 3 8 3s8-1.34 8-3V6" />
+          <path d="M4 12v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6" />
+        </svg>
+      );
+    case 'insights':
+      return (
+        <svg className="icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 3a7 7 0 0 1 4 12c-1 .8-1.5 1.7-1.6 3H9.6c-.1-1.3-.6-2.2-1.6-3A7 7 0 0 1 12 3Z" />
+          <path d="M9 21h6" />
+        </svg>
+      );
+    case 'wins':
+      return (
+        <svg className="icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M5 4h14l-2 7a5 5 0 0 1-5 4H12a5 5 0 0 1-5-4L5 4Z" />
+          <path d="M9 21h6" />
+          <path d="M8 15h8" />
+        </svg>
+      );
+    case 'fans':
+      return (
+        <svg className="icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M8 13a4 4 0 1 1 4-4 4 4 0 0 1-4 4Z" />
+          <path d="M16 11a3 3 0 1 0-3-3 3 3 0 0 0 3 3Z" />
+          <path d="M2 20c0-3.3 2.7-6 6-6s6 2.7 6 6" />
+          <path d="M14 20c0-2.2 1.8-4 4-4s4 1.8 4 4" />
+        </svg>
+      );
+    case 'titles':
+      return (
+        <svg className="icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M6 4h12l-1.5 6a5 5 0 0 1-5 4h-1a5 5 0 0 1-5-4L6 4Z" />
+          <path d="M9 21h6" />
+        </svg>
+      );
+    case 'legacy':
+      return (
+        <svg className="icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 2 4 6v6c0 5 3.4 8.4 8 10 4.6-1.6 8-5 8-10V6l-8-4Z" />
+          <path d="M12 8v8" />
+          <path d="M8.5 12H15.5" />
+        </svg>
+      );
+    default:
+      return null;
+  }
+};
 
 const normalizeState = (raw) => {
   const safe = {
@@ -173,8 +299,11 @@ const normalizeState = (raw) => {
       ...(raw?.buildings || {})
     },
     upgrades: Array.isArray(raw?.upgrades) ? raw.upgrades : [],
+    legacyUpgrades: Array.isArray(raw?.legacyUpgrades) ? raw.legacyUpgrades : [],
     totalClicks: clampNumber(raw?.totalClicks),
     profileName: typeof raw?.profileName === 'string' ? raw.profileName : '',
+    rebirths: clampNumber(raw?.rebirths),
+    legacyPoints: clampNumber(raw?.legacyPoints),
     lastUpdated: clampNumber(raw?.lastUpdated) || Date.now()
   };
 
@@ -212,7 +341,7 @@ const formatRate = (value) => `${formatNumber(value)}/s`;
 
 const getChampionshipRequirement = (titles) => Math.round(25 * Math.pow(1.4, titles));
 
-const getModifiers = (upgrades, titles) => {
+const getModifiers = (upgrades, legacyUpgrades, titles) => {
   const modifiers = {
     clickBonus: 0,
     clickMult: 1,
@@ -223,8 +352,9 @@ const getModifiers = (upgrades, titles) => {
     globalMult: 1
   };
 
-  upgrades.forEach((upgradeId) => {
-    const upgrade = UPGRADES.find((item) => item.id === upgradeId);
+  const combinedUpgrades = [...upgrades, ...legacyUpgrades];
+  combinedUpgrades.forEach((upgradeId) => {
+    const upgrade = UPGRADES.find((item) => item.id === upgradeId) || LEGACY_UPGRADES.find((item) => item.id === upgradeId);
     if (!upgrade) return;
     const { type, value } = upgrade.effect;
     if (type === 'clickBonus') modifiers.clickBonus += value;
@@ -240,8 +370,20 @@ const getModifiers = (upgrades, titles) => {
   return modifiers;
 };
 
+const getOfflineSettings = (legacyUpgrades) => {
+  let rate = OFFLINE_BASE_RATE;
+  let capSeconds = OFFLINE_BASE_CAP_SECONDS;
+  legacyUpgrades.forEach((upgradeId) => {
+    const upgrade = LEGACY_UPGRADES.find((item) => item.id === upgradeId);
+    if (!upgrade) return;
+    if (upgrade.effect.type === 'offlineRate') rate += upgrade.effect.value;
+    if (upgrade.effect.type === 'offlineCap') capSeconds += upgrade.effect.value;
+  });
+  return { rate, capSeconds };
+};
+
 const getRates = (state) => {
-  const modifiers = getModifiers(state.upgrades, state.resources.titles);
+  const modifiers = getModifiers(state.upgrades, state.legacyUpgrades, state.resources.titles);
   const dataPerClick = (BASE.dataPerClick + modifiers.clickBonus) * modifiers.clickMult * modifiers.globalMult;
   const dataPerSec =
     (state.buildings.scout * BASE.scoutDataPerSec + state.resources.fans * BASE.fanDataPerSec) *
@@ -257,9 +399,6 @@ const getRates = (state) => {
     insightPerSec,
     winPerSec,
     fanPerSec,
-    dataCostPerInsight: BASE.dataCostPerInsight,
-    insightCostPerWin: BASE.insightCostPerWin,
-    winCostPerFan: BASE.winCostPerFan,
     modifiers
   };
 };
@@ -278,24 +417,9 @@ const applyDelta = (state, deltaSeconds) => {
     const rates = getRates(nextState);
 
     nextState.resources.data += rates.dataPerSec * dt;
-
-    const possibleInsights = rates.insightPerSec * dt;
-    const maxByData = nextState.resources.data / rates.dataCostPerInsight;
-    const actualInsights = Math.min(possibleInsights, maxByData);
-    nextState.resources.data -= actualInsights * rates.dataCostPerInsight;
-    nextState.resources.insights += actualInsights;
-
-    const possibleWins = rates.winPerSec * dt;
-    const maxByInsights = nextState.resources.insights / rates.insightCostPerWin;
-    const actualWins = Math.min(possibleWins, maxByInsights);
-    nextState.resources.insights -= actualWins * rates.insightCostPerWin;
-    nextState.resources.wins += actualWins;
-
-    const possibleFans = rates.fanPerSec * dt;
-    const maxByWins = nextState.resources.wins / rates.winCostPerFan;
-    const actualFans = Math.min(possibleFans, maxByWins);
-    nextState.resources.wins -= actualFans * rates.winCostPerFan;
-    nextState.resources.fans += actualFans;
+    nextState.resources.insights += rates.insightPerSec * dt;
+    nextState.resources.wins += rates.winPerSec * dt;
+    nextState.resources.fans += rates.fanPerSec * dt;
 
     remaining -= dt;
   }
@@ -309,19 +433,30 @@ const applyDelta = (state, deltaSeconds) => {
 };
 
 const applyOfflineProgress = (state, now) => {
+  const offlineSettings = getOfflineSettings(state.legacyUpgrades || []);
   const elapsedSeconds = Math.max(0, (now - state.lastUpdated) / 1000);
-  if (elapsedSeconds <= 0.1) return { nextState: { ...state, lastUpdated: now }, elapsedSeconds: 0, capped: false };
+  if (elapsedSeconds <= 0.1) {
+    return {
+      nextState: { ...state, lastUpdated: now },
+      elapsedSeconds: 0,
+      capped: false,
+      rate: offlineSettings.rate,
+      capSeconds: offlineSettings.capSeconds
+    };
+  }
 
-  const capped = elapsedSeconds > OFFLINE_CAP_SECONDS;
-  const effectiveSeconds = capped ? OFFLINE_CAP_SECONDS : elapsedSeconds;
-  const progressed = applyDelta(state, effectiveSeconds);
+  const capped = elapsedSeconds > offlineSettings.capSeconds;
+  const effectiveSeconds = capped ? offlineSettings.capSeconds : elapsedSeconds;
+  const progressed = applyDelta(state, effectiveSeconds * offlineSettings.rate);
   return {
     nextState: {
       ...progressed,
       lastUpdated: now
     },
     elapsedSeconds: effectiveSeconds,
-    capped
+    capped,
+    rate: offlineSettings.rate,
+    capSeconds: offlineSettings.capSeconds
   };
 };
 
@@ -401,11 +536,14 @@ function App() {
     if (hasHydrated.current) return;
     hasHydrated.current = true;
     const now = Date.now();
-    const { nextState, elapsedSeconds, capped } = applyOfflineProgress(gameState, now);
+    const { nextState, elapsedSeconds, capped, rate, capSeconds } = applyOfflineProgress(gameState, now);
     if (elapsedSeconds >= 5) {
-      setOfflineSummary({ elapsedSeconds, capped });
+      setOfflineSummary({ elapsedSeconds, capped, rate, capSeconds });
     }
     setGameState(nextState);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+    }
   }, [gameState]);
 
   useEffect(() => {
@@ -532,6 +670,7 @@ function App() {
   }, []);
 
   const rates = useMemo(() => getRates(gameState), [gameState]);
+  const offlineSettings = useMemo(() => getOfflineSettings(gameState.legacyUpgrades || []), [gameState.legacyUpgrades]);
   const championshipRequirement = useMemo(
     () => getChampionshipRequirement(gameState.resources.titles),
     [gameState.resources.titles]
@@ -545,18 +684,14 @@ function App() {
       gameState.resources.titles * 500,
     [gameState.resources]
   );
-  const currentStepIndex = useMemo(() => {
-    let index = 0;
-    MILESTONES.forEach((step, stepIndex) => {
-      if (progressScore >= step.threshold) index = stepIndex;
-    });
-    return index;
-  }, [progressScore]);
-  const nextStep = MILESTONES[currentStepIndex + 1];
+  const currentStepIndex = Math.min(gameState.rebirths, REBIRTH_STEPS.length - 1);
+  const nextStep = REBIRTH_STEPS[currentStepIndex + 1];
   const progressToNext = nextStep
-    ? (progressScore - MILESTONES[currentStepIndex].threshold) /
-      (nextStep.threshold - MILESTONES[currentStepIndex].threshold)
+    ? (progressScore - REBIRTH_STEPS[currentStepIndex].threshold) /
+      (nextStep.threshold - REBIRTH_STEPS[currentStepIndex].threshold)
     : 1;
+  const canRebirth = nextStep ? progressScore >= nextStep.threshold : false;
+  const nextLegacyGain = Math.max(1, Math.floor(Math.sqrt(progressScore / 800)));
 
   const handleClick = () => {
     setGameState((prev) => ({
@@ -575,12 +710,13 @@ function App() {
     setGameState((prev) => {
       const owned = prev.buildings[buildingId] || 0;
       const cost = getBuildingCost(building, owned, buyAmount);
-      if (prev.resources.data < cost) return prev;
+      const currency = building.costCurrency || 'data';
+      if ((prev.resources[currency] || 0) < cost) return prev;
       return {
         ...prev,
         resources: {
           ...prev.resources,
-          data: prev.resources.data - cost
+          [currency]: (prev.resources[currency] || 0) - cost
         },
         buildings: {
           ...prev.buildings,
@@ -629,6 +765,25 @@ function App() {
     }
   };
 
+  const handleRebirth = () => {
+    if (!canRebirth) return;
+    if (
+      typeof window !== 'undefined' &&
+      !window.confirm(`Rebirth now to gain ${nextLegacyGain} legacy point(s)? This resets current resources.`)
+    ) {
+      return;
+    }
+    setOfflineSummary(null);
+    setGameState((prev) => ({
+      ...DEFAULT_STATE,
+      legacyUpgrades: prev.legacyUpgrades,
+      rebirths: prev.rebirths + 1,
+      legacyPoints: prev.legacyPoints + nextLegacyGain,
+      lastUpdated: Date.now(),
+      profileName: prev.profileName
+    }));
+  };
+
   const handleMagicLink = async () => {
     if (!authEmail || !supabase) return;
     setAuthMessage('Sending magic link...');
@@ -663,6 +818,29 @@ function App() {
   };
 
   const availableUpgrades = UPGRADES.filter((upgrade) => !gameState.upgrades.includes(upgrade.id));
+  const purchasedUpgrades = UPGRADES.filter((upgrade) => gameState.upgrades.includes(upgrade.id));
+  const availableLegacy = LEGACY_UPGRADES.filter(
+    (upgrade) => !gameState.legacyUpgrades.includes(upgrade.id) && gameState.rebirths >= upgrade.requiresRebirths
+  );
+  const lockedLegacy = LEGACY_UPGRADES.filter(
+    (upgrade) => !gameState.legacyUpgrades.includes(upgrade.id) && gameState.rebirths < upgrade.requiresRebirths
+  );
+  const purchasedLegacy = LEGACY_UPGRADES.filter((upgrade) => gameState.legacyUpgrades.includes(upgrade.id));
+
+  const handleBuyLegacyUpgrade = (upgradeId) => {
+    const upgrade = LEGACY_UPGRADES.find((item) => item.id === upgradeId);
+    if (!upgrade) return;
+    setGameState((prev) => {
+      if (prev.legacyUpgrades.includes(upgradeId)) return prev;
+      if (prev.rebirths < upgrade.requiresRebirths) return prev;
+      if (prev.legacyPoints < upgrade.cost) return prev;
+      return {
+        ...prev,
+        legacyPoints: prev.legacyPoints - upgrade.cost,
+        legacyUpgrades: [...prev.legacyUpgrades, upgradeId]
+      };
+    });
+  };
 
   return (
     <div className="app">
@@ -738,38 +916,77 @@ function App() {
           <button className="btn primary" onClick={handleClick}>
             Run data pull (+{formatNumber(rates.dataPerClick)})
           </button>
+          <button className={`btn ${canRebirth ? 'accent' : 'disabled'}`} onClick={handleRebirth} disabled={!canRebirth}>
+            Rebirth +{nextLegacyGain} legacy
+          </button>
         </div>
         {offlineSummary && (
           <div className="notice">
-            Offline progress applied: {Math.floor(offlineSummary.elapsedSeconds)} seconds
-            {offlineSummary.capped ? ' (capped at 6 hours).' : '.'}
+            Offline progress applied: {Math.floor(offlineSummary.elapsedSeconds)} seconds at{' '}
+            {Math.round(offlineSummary.rate * 100)}% efficiency
+            {offlineSummary.capped
+              ? ` (capped at ${Math.round(offlineSummary.capSeconds / 3600)} hours).`
+              : '.'}
           </div>
         )}
+        <p className="muted">
+          Offline gains run at {Math.round(offlineSettings.rate * 100)}% efficiency, capped at{' '}
+          {Math.round(offlineSettings.capSeconds / 3600)} hours.
+        </p>
+        <div className="rebirth-strip">
+          <div>
+            <p className="muted">Rebirths</p>
+            <p className="strong">{formatWhole(gameState.rebirths)}</p>
+          </div>
+          <div>
+            <p className="muted">Legacy points</p>
+            <p className="strong">{formatWhole(gameState.legacyPoints)}</p>
+          </div>
+          <div>
+            <p className="muted">Next rebirth unlock</p>
+            <p className="strong">{nextStep ? nextStep.title : 'Max tier reached'}</p>
+          </div>
+        </div>
       </section>
 
       <section className="stats-grid">
-        <div className="stat-card">
-          <p className="stat-label">Data</p>
+        <div className="stat-card data">
+          <div className="stat-head">
+            <Icon name="data" />
+            <p className="stat-label">Data</p>
+          </div>
           <p className="stat-value">{formatNumber(gameState.resources.data)}</p>
           <p className="stat-meta">{formatRate(rates.dataPerSec)}</p>
         </div>
-        <div className="stat-card">
-          <p className="stat-label">Insights</p>
+        <div className="stat-card insights">
+          <div className="stat-head">
+            <Icon name="insights" />
+            <p className="stat-label">Insights</p>
+          </div>
           <p className="stat-value">{formatNumber(gameState.resources.insights)}</p>
           <p className="stat-meta">{formatRate(rates.insightPerSec)}</p>
         </div>
-        <div className="stat-card">
-          <p className="stat-label">Wins</p>
+        <div className="stat-card wins">
+          <div className="stat-head">
+            <Icon name="wins" />
+            <p className="stat-label">Wins</p>
+          </div>
           <p className="stat-value">{formatNumber(gameState.resources.wins)}</p>
           <p className="stat-meta">{formatRate(rates.winPerSec)}</p>
         </div>
-        <div className="stat-card">
-          <p className="stat-label">Fans</p>
+        <div className="stat-card fans">
+          <div className="stat-head">
+            <Icon name="fans" />
+            <p className="stat-label">Fans</p>
+          </div>
           <p className="stat-value">{formatNumber(gameState.resources.fans)}</p>
           <p className="stat-meta">{formatRate(rates.fanPerSec)}</p>
         </div>
-        <div className="stat-card">
-          <p className="stat-label">Titles</p>
+        <div className="stat-card titles">
+          <div className="stat-head">
+            <Icon name="titles" />
+            <p className="stat-label">Titles</p>
+          </div>
           <p className="stat-value">{formatWhole(gameState.resources.titles)}</p>
           <p className="stat-meta">+{formatWhole(gameState.resources.titles * 5)}% global</p>
         </div>
@@ -781,7 +998,7 @@ function App() {
             <div className="panel-header">
               <div>
                 <h3>Operations</h3>
-                <p className="muted">Spend data to scale your analytics pipeline.</p>
+                <p className="muted">Spend data, insights, and wins to scale your analytics pipeline.</p>
               </div>
               <div className="chip-row">
                 {[1, 10, 25].map((amount) => (
@@ -799,11 +1016,15 @@ function App() {
               {BUILDINGS.map((building) => {
                 const owned = gameState.buildings[building.id] || 0;
                 const cost = getBuildingCost(building, owned, buyAmount);
-                const affordable = gameState.resources.data >= cost;
+                const currency = building.costCurrency || 'data';
+                const affordable = (gameState.resources[currency] || 0) >= cost;
                 return (
-                  <div key={building.id} className="card">
+                  <div key={building.id} className={`card ${currency}`}>
                     <div>
-                      <p className="card-title">{building.name}</p>
+                      <div className="card-title-row">
+                        <Icon name={currency} />
+                        <p className="card-title">{building.name}</p>
+                      </div>
                       <p className="muted">{building.description}</p>
                       <p className="muted">Owned: {owned}</p>
                     </div>
@@ -812,7 +1033,7 @@ function App() {
                       onClick={() => handleBuyBuilding(building.id)}
                       disabled={!affordable}
                     >
-                      Buy ({formatNumber(cost)} data)
+                      Buy ({formatNumber(cost)} {currency})
                     </button>
                   </div>
                 );
@@ -854,6 +1075,18 @@ function App() {
                 })}
               </div>
             )}
+            {purchasedUpgrades.length > 0 && (
+              <div className="purchased">
+                <p className="muted">Purchased</p>
+                <div className="pill-row">
+                  {purchasedUpgrades.map((upgrade) => (
+                    <span key={upgrade.id} className="pill">
+                      {upgrade.name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -887,24 +1120,85 @@ function App() {
           </div>
 
           <div className="panel">
-            <h3>Pipeline Snapshot</h3>
-            <div className="snapshot">
-              <p>Data per click: {formatNumber(rates.dataPerClick)}</p>
-              <p>Data per second: {formatRate(rates.dataPerSec)}</p>
-              <p>Insight conversion: {formatRate(rates.insightPerSec)}</p>
-              <p>Win conversion: {formatRate(rates.winPerSec)}</p>
-              <p>Fan conversion: {formatRate(rates.fanPerSec)}</p>
-              <p>Global multiplier: x{formatNumber(rates.modifiers.globalMult)}</p>
+            <h3>Legacy Skill Tree</h3>
+            <p className="muted">Unlock permanent boosts with rebirth currency.</p>
+            <div className="progress-card">
+              <div className="progress-header">
+                <span>Legacy points</span>
+                <span>{formatWhole(gameState.legacyPoints)} available</span>
+              </div>
+              <div className="progress">
+                <div
+                  className="progress-bar"
+                  style={{ width: `${Math.min(100, Math.max(0, progressToNext * 100))}%` }}
+                />
+              </div>
+              <p className="muted">
+                {nextStep
+                  ? `Next rebirth: ${nextStep.title} at ${formatWhole(nextStep.threshold)} progression.`
+                  : 'Automatic tracking unlocked. Rebirths now speed everything up.'}
+              </p>
             </div>
+            <div className="grid two">
+              {availableLegacy.map((upgrade) => {
+                const affordable = gameState.legacyPoints >= upgrade.cost;
+                return (
+                  <div key={upgrade.id} className="card legacy">
+                    <div>
+                      <div className="card-title-row">
+                        <Icon name="legacy" />
+                        <p className="card-title">{upgrade.name}</p>
+                      </div>
+                      <p className="muted">{upgrade.description}</p>
+                      <p className="muted">Requires rebirth {upgrade.requiresRebirths + 1}</p>
+                    </div>
+                    <button
+                      className={`btn ${affordable ? 'accent' : 'disabled'}`}
+                      onClick={() => handleBuyLegacyUpgrade(upgrade.id)}
+                      disabled={!affordable}
+                    >
+                      Unlock ({upgrade.cost} legacy)
+                    </button>
+                  </div>
+                );
+              })}
+              {lockedLegacy.map((upgrade) => (
+                <div key={upgrade.id} className="card legacy locked">
+                  <div>
+                    <div className="card-title-row">
+                      <Icon name="legacy" />
+                      <p className="card-title">{upgrade.name}</p>
+                    </div>
+                    <p className="muted">{upgrade.description}</p>
+                    <p className="muted">Unlocks at rebirth {upgrade.requiresRebirths + 1}</p>
+                  </div>
+                  <button className="btn disabled" disabled>
+                    Locked
+                  </button>
+                </div>
+              ))}
+            </div>
+            {purchasedLegacy.length > 0 && (
+              <div className="purchased">
+                <p className="muted">Unlocked legacy upgrades</p>
+                <div className="pill-row">
+                  {purchasedLegacy.map((upgrade) => (
+                    <span key={upgrade.id} className="pill accent">
+                      {upgrade.name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="panel">
-            <h3>Analyst Progression</h3>
-            <p className="muted">Your realistic build-up path.</p>
+            <h3>Analyst Rebirths</h3>
+            <p className="muted">Your realistic build-up path, now tied to rebirths.</p>
             <div className="progress-card">
               <div className="progress-header">
                 <span>Current stage</span>
-                <span>{MILESTONES[currentStepIndex].title}</span>
+                <span>{REBIRTH_STEPS[currentStepIndex].title}</span>
               </div>
               <div className="progress">
                 <div
@@ -919,8 +1213,8 @@ function App() {
               </p>
             </div>
             <div className="milestones">
-              {MILESTONES.map((step, index) => {
-                const unlocked = progressScore >= step.threshold;
+              {REBIRTH_STEPS.map((step, index) => {
+                const unlocked = gameState.rebirths >= index;
                 const isCurrent = index === currentStepIndex;
                 return (
                   <div key={step.id} className={`milestone ${unlocked ? 'unlocked' : ''}`}>
