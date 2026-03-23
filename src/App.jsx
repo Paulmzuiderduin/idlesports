@@ -455,6 +455,17 @@ const formatSignedRate = (value) => {
 
 const formatPercent = (value) => `${Math.round(clampNumber(value) * 100)}%`;
 
+const formatDuration = (seconds) => {
+  const safe = Math.max(0, Math.floor(clampNumber(seconds)));
+  if (safe < 60) return `${safe}s`;
+  const minutes = Math.floor(safe / 60);
+  if (minutes < 60) return `${minutes}m ${safe % 60}s`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ${minutes % 60}m`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ${hours % 24}h`;
+};
+
 const formatCostLabel = (cost) =>
   Object.entries(cost)
     .map(([key, value]) => `${formatNumber(value)} ${key}`)
@@ -1079,6 +1090,12 @@ function App() {
   );
   const currentStepIndex = Math.min(gameState.rebirths, REBIRTH_STEPS.length - 1);
   const nextStep = REBIRTH_STEPS[currentStepIndex + 1];
+  const scoreToNext = nextStep ? Math.max(0, nextStep.threshold - progressScore) : 0;
+  const scoreRate = useMemo(
+    () => effectiveRates.dataNet + effectiveRates.insightsNet * 5 + effectiveRates.winsNet * 20 + effectiveRates.fansNet * 2,
+    [effectiveRates]
+  );
+  const timeToNext = scoreRate > 0 && scoreToNext > 0 ? scoreToNext / scoreRate : null;
   const progressToNext = nextStep
     ? (progressScore - REBIRTH_STEPS[currentStepIndex].threshold) /
       (nextStep.threshold - REBIRTH_STEPS[currentStepIndex].threshold)
@@ -1368,6 +1385,10 @@ function App() {
             <p className="muted">Next rebirth unlock</p>
             <p className="strong">{nextStep ? nextStep.title : 'Max tier reached'}</p>
           </div>
+          <div>
+            <p className="muted">Score to next</p>
+            <p className="strong">{nextStep ? formatWhole(scoreToNext) : '0'}</p>
+          </div>
         </div>
       </section>
 
@@ -1649,6 +1670,20 @@ function App() {
                 <span>Legacy points</span>
                 <span>{formatWhole(gameState.legacyPoints)} available</span>
               </div>
+              <div className="snapshot">
+                <span>Combined score: {formatWhole(progressScore)}</span>
+                <span className={scoreRate < 0 ? 'negative' : ''}>
+                  Score rate: {formatSignedRate(scoreRate)}
+                </span>
+                <span>
+                  ETA to next rebirth:{' '}
+                  {nextStep
+                    ? scoreRate > 0
+                      ? formatDuration(timeToNext || 0)
+                      : 'stalled'
+                    : 'max tier'}
+                </span>
+              </div>
               <div className="progress">
                 <div
                   className="progress-bar"
@@ -1657,7 +1692,9 @@ function App() {
               </div>
               <p className="muted">
                 {nextStep
-                  ? `Next rebirth: ${nextStep.title} at ${formatWhole(nextStep.threshold)} combined score.`
+                  ? `Next rebirth: ${nextStep.title} at ${formatWhole(nextStep.threshold)} combined score. ${formatWhole(
+                      scoreToNext
+                    )} remaining.`
                   : 'Automatic tracking unlocked. Rebirths now speed everything up.'}
               </p>
             </div>
@@ -1733,7 +1770,9 @@ function App() {
               </div>
               <p className="muted">
                 {nextStep
-                  ? `Next: ${nextStep.title} at ${formatWhole(nextStep.threshold)} combined score.`
+                  ? `Next: ${nextStep.title} at ${formatWhole(nextStep.threshold)} combined score (${formatWhole(
+                      scoreToNext
+                    )} remaining).`
                   : 'You unlocked automatic tracking.'}
               </p>
             </div>
