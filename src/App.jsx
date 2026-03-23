@@ -1255,15 +1255,15 @@ function App() {
   const canRebirth = nextThreshold ? progressScore >= nextThreshold : false;
   const baseLegacyGain = Math.max(1, Math.floor(Math.sqrt(progressScore / 800)));
   const lastStoryIndex = REBIRTH_STEPS.length - 1;
-  const postStoryIndex = Math.max(0, gameState.rebirths - lastStoryIndex + 1);
+  const postStoryIndex = Math.max(0, gameState.rebirths - lastStoryIndex);
   const postStoryDivisor =
     postStoryIndex > 0
       ? Math.round(REBIRTH_STEPS[lastStoryIndex].threshold * Math.pow(REBIRTH_POST_SCALE, postStoryIndex))
       : null;
   const postStoryGain = postStoryDivisor ? Math.max(1, Math.floor(progressScore / postStoryDivisor)) : baseLegacyGain;
-  const nextLegacyGain = gameState.rebirths >= lastStoryIndex ? postStoryGain : baseLegacyGain;
+  const nextLegacyGain = gameState.rebirths > lastStoryIndex ? postStoryGain : baseLegacyGain;
   const legacyPreviewNote =
-    gameState.rebirths >= lastStoryIndex && postStoryDivisor
+    gameState.rebirths > lastStoryIndex && postStoryDivisor
       ? `Legacy preview: ${formatWhole(nextLegacyGain)} point(s) at ${formatWhole(progressScore)} score (1 per ${formatWhole(
           postStoryDivisor
         )}).`
