@@ -466,6 +466,11 @@ p {
   color: #c2410c;
 }
 
+.pill.subtle {
+  background: rgba(148, 163, 184, 0.2);
+  color: #475569;
+}
+
 .stat-meta .pill {
   margin-left: 6px;
   padding: 2px 6px;

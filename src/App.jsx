@@ -625,6 +625,33 @@ const getBuildingInputRate = (building, outputRate, rates) => {
   }
 };
 
+const getUpgradeEffectLabel = (upgrade) => {
+  if (!upgrade?.effect) return '';
+  const { type, value } = upgrade.effect;
+  switch (type) {
+    case 'clickBonus':
+      return `+${formatNumber(value)} data/click`;
+    case 'clickMult':
+      return `+${formatNumber((value - 1) * 100)}% click power`;
+    case 'dataPerSecMult':
+      return `+${formatNumber((value - 1) * 100)}% data/s`;
+    case 'insightPerSecMult':
+      return `+${formatNumber((value - 1) * 100)}% insight/s`;
+    case 'winPerSecMult':
+      return `+${formatNumber((value - 1) * 100)}% win/s`;
+    case 'fanPerSecMult':
+      return `+${formatNumber((value - 1) * 100)}% fan/s`;
+    case 'globalMult':
+      return `+${formatNumber((value - 1) * 100)}% all output`;
+    case 'offlineRate':
+      return `+${formatNumber(value * 100)}% offline rate`;
+    case 'offlineCap':
+      return `+${formatNumber(value / 3600)}h offline cap`;
+    default:
+      return '';
+  }
+};
+
 const getEffectiveRates = (state, rates) => {
   const dataSupply = Math.max(0, clampNumber(state.resources.data) + rates.dataPerSec);
   const possibleInsights = Math.max(0, rates.insightPerSec);
@@ -1507,6 +1534,8 @@ function App() {
                 const inputCurrency = getBuildingInputCurrency(building);
                 const totalOutput = perUnitRate * owned;
                 const totalInput = perUnitInput * owned;
+                const deltaOutput = perUnitRate * buyAmount;
+                const deltaInput = perUnitInput * buyAmount;
                 const refund = getBuildingRefund(building, owned, buyAmount);
                 return (
                   <div key={building.id} className={`card ${outputCurrency}`}>
@@ -1514,6 +1543,7 @@ function App() {
                       <div className="card-title-row">
                         <Icon name={outputCurrency} />
                         <p className="card-title">{building.name}</p>
+                        <span className="pill subtle">{currency}</span>
                       </div>
                       <p className="muted">{building.description}</p>
                       <p className="muted">Owned: {owned}</p>
@@ -1533,6 +1563,10 @@ function App() {
                           Total uses {formatNumber(totalInput)} {inputCurrency}/s
                         </p>
                       )}
+                      <p className="muted small">
+                        Buy {buyAmount}: +{formatNumber(deltaOutput)} {outputCurrency}/s
+                        {deltaInput > 0 && inputCurrency ? `, uses ${formatNumber(deltaInput)} ${inputCurrency}/s` : ''}
+                      </p>
                     </div>
                     <button
                       className={`btn ${affordable ? 'primary' : 'disabled'}`}
@@ -1567,6 +1601,7 @@ function App() {
               <div className="grid two">
                 {availableUpgrades.map((upgrade) => {
                   const affordable = canAffordUpgrade(gameState.resources, upgrade.cost);
+                  const effectLabel = getUpgradeEffectLabel(upgrade);
                   const costLabel = Object.entries(upgrade.cost)
                     .map(([key, value]) => `${formatNumber(value)} ${key}`)
                     .join(' + ');
@@ -1575,6 +1610,7 @@ function App() {
                       <div>
                         <p className="card-title">{upgrade.name}</p>
                         <p className="muted">{upgrade.description}</p>
+                        {effectLabel && <p className="muted small">Effect: {effectLabel}</p>}
                       </div>
                       <button
                         className={`btn ${affordable ? 'accent' : 'disabled'}`}
@@ -1708,42 +1744,47 @@ function App() {
                     Combined score = data + (insights × 5) + (wins × 20) + (fans × 2) + (titles × 500).
                   </p>
                   <div className="grid two">
-                    {availableLegacy.map((upgrade) => {
-                      const affordable = gameState.legacyPoints >= upgrade.cost;
-                      return (
-                        <div key={upgrade.id} className="card legacy">
-                          <div>
-                            <div className="card-title-row">
-                              <Icon name="legacy" />
-                              <p className="card-title">{upgrade.name}</p>
-                            </div>
-                            <p className="muted">{upgrade.description}</p>
-                            <p className="muted">Requires rebirth {upgrade.requiresRebirths + 1}</p>
-                          </div>
-                          <button
-                            className={`btn ${affordable ? 'accent' : 'disabled'}`}
-                            onClick={() => handleBuyLegacyUpgrade(upgrade.id)}
-                            disabled={!affordable}
+              {availableLegacy.map((upgrade) => {
+                const affordable = gameState.legacyPoints >= upgrade.cost;
+                const effectLabel = getUpgradeEffectLabel(upgrade);
+                return (
+                  <div key={upgrade.id} className="card legacy">
+                    <div>
+                      <div className="card-title-row">
+                        <Icon name="legacy" />
+                        <p className="card-title">{upgrade.name}</p>
+                      </div>
+                      <p className="muted">{upgrade.description}</p>
+                      <p className="muted">Requires rebirth {upgrade.requiresRebirths + 1}</p>
+                      {effectLabel && <p className="muted small">Effect: {effectLabel}</p>}
+                    </div>
+                    <button
+                      className={`btn ${affordable ? 'accent' : 'disabled'}`}
+                      onClick={() => handleBuyLegacyUpgrade(upgrade.id)}
+                      disabled={!affordable}
                           >
                             Unlock ({upgrade.cost} legacy)
                           </button>
                         </div>
                       );
                     })}
-                    {lockedLegacy.map((upgrade) => (
-                      <div key={upgrade.id} className="card legacy locked">
-                        <div>
-                          <div className="card-title-row">
-                            <Icon name="legacy" />
-                            <p className="card-title">{upgrade.name}</p>
-                          </div>
-                          <p className="muted">{upgrade.description}</p>
-                          <p className="muted">Unlocks at rebirth {upgrade.requiresRebirths + 1}</p>
-                        </div>
-                        <button className="btn disabled" disabled>
-                          Locked
-                        </button>
-                      </div>
+              {lockedLegacy.map((upgrade) => (
+                <div key={upgrade.id} className="card legacy locked">
+                  <div>
+                    <div className="card-title-row">
+                      <Icon name="legacy" />
+                      <p className="card-title">{upgrade.name}</p>
+                    </div>
+                    <p className="muted">{upgrade.description}</p>
+                    <p className="muted">Unlocks at rebirth {upgrade.requiresRebirths + 1}</p>
+                    {getUpgradeEffectLabel(upgrade) && (
+                      <p className="muted small">Effect: {getUpgradeEffectLabel(upgrade)}</p>
+                    )}
+                  </div>
+                  <button className="btn disabled" disabled>
+                    Locked
+                  </button>
+                </div>
                     ))}
                   </div>
                   {purchasedLegacy.length > 0 && (
