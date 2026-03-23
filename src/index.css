@@ -569,6 +569,11 @@ p {
   color: var(--muted);
 }
 
+.helper {
+  font-size: 11px;
+  color: var(--muted);
+}
+
 .field.compact {
   max-width: 180px;
 }
@@ -590,6 +595,10 @@ input:focus {
 .muted {
   color: var(--muted);
   font-size: 13px;
+}
+
+.muted.small {
+  font-size: 12px;
 }
 
 .strong {

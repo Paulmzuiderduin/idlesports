@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { isSupabaseConfigured, supabase } from './lib/supabase';
 
 const STORAGE_KEY = 'idlesports_state';
+const STORAGE_BACKUP_KEY = 'idlesports_state_backup';
 const TICK_MS = 250;
 const OFFLINE_BASE_RATE = 0.1;
 const OFFLINE_BASE_CAP_SECONDS = 6 * 60 * 60;
@@ -12,6 +13,9 @@ const BASE = {
   analystInsightPerSec: 0.25,
   strategyWinPerSec: 0.08,
   marketingFanPerSec: 0.4,
+  dataCostPerInsight: 3,
+  insightCostPerWin: 2,
+  winCostPerFan: 1,
   fanDataPerSec: 0.02
 };
 
@@ -316,13 +320,44 @@ const normalizeState = (raw) => {
   return safe;
 };
 
+const isEmptyState = (state) => {
+  if (!state) return true;
+  const total =
+    state.resources?.data +
+    state.resources?.insights +
+    state.resources?.wins +
+    state.resources?.fans +
+    state.resources?.titles;
+  return (
+    !total &&
+    !state.totalClicks &&
+    !state.rebirths &&
+    !state.legacyPoints &&
+    (!state.upgrades || state.upgrades.length === 0) &&
+    (!state.legacyUpgrades || state.legacyUpgrades.length === 0)
+  );
+};
+
 const loadLocalState = () => {
   if (typeof window === 'undefined') return { ...DEFAULT_STATE };
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY);
-    if (!stored) return { ...DEFAULT_STATE };
-    return normalizeState(JSON.parse(stored));
+    const backup = window.localStorage.getItem(STORAGE_BACKUP_KEY);
+    if (!stored && !backup) return { ...DEFAULT_STATE };
+    const primaryState = stored ? normalizeState(JSON.parse(stored)) : null;
+    const backupState = backup ? normalizeState(JSON.parse(backup)) : null;
+    if (!primaryState && backupState) return backupState;
+    if (primaryState && backupState && isEmptyState(primaryState) && !isEmptyState(backupState)) {
+      return backupState;
+    }
+    return primaryState || backupState || { ...DEFAULT_STATE };
   } catch (error) {
+    try {
+      const backup = window.localStorage.getItem(STORAGE_BACKUP_KEY);
+      if (backup) return normalizeState(JSON.parse(backup));
+    } catch {
+      return { ...DEFAULT_STATE };
+    }
     return { ...DEFAULT_STATE };
   }
 };
@@ -404,8 +439,27 @@ const getRates = (state) => {
     insightPerSec,
     winPerSec,
     fanPerSec,
+    dataCostPerInsight: BASE.dataCostPerInsight,
+    insightCostPerWin: BASE.insightCostPerWin,
+    winCostPerFan: BASE.winCostPerFan,
     modifiers
   };
+};
+
+const getBuildingPerUnitRate = (building, modifiers) => {
+  if (!building) return 0;
+  switch (building.id) {
+    case 'scout':
+      return BASE.scoutDataPerSec * modifiers.dataPerSecMult * modifiers.globalMult;
+    case 'analyst':
+      return BASE.analystInsightPerSec * modifiers.insightPerSecMult * modifiers.globalMult;
+    case 'strategy':
+      return BASE.strategyWinPerSec * modifiers.winPerSecMult * modifiers.globalMult;
+    case 'marketing':
+      return BASE.marketingFanPerSec * modifiers.fanPerSecMult * modifiers.globalMult;
+    default:
+      return 0;
+  }
 };
 
 const applyDelta = (state, deltaSeconds) => {
@@ -422,9 +476,24 @@ const applyDelta = (state, deltaSeconds) => {
     const rates = getRates(nextState);
 
     nextState.resources.data += rates.dataPerSec * dt;
-    nextState.resources.insights += rates.insightPerSec * dt;
-    nextState.resources.wins += rates.winPerSec * dt;
-    nextState.resources.fans += rates.fanPerSec * dt;
+
+    const possibleInsights = rates.insightPerSec * dt;
+    const maxByData = nextState.resources.data / rates.dataCostPerInsight;
+    const actualInsights = Math.min(possibleInsights, maxByData);
+    nextState.resources.data -= actualInsights * rates.dataCostPerInsight;
+    nextState.resources.insights += actualInsights;
+
+    const possibleWins = rates.winPerSec * dt;
+    const maxByInsights = nextState.resources.insights / rates.insightCostPerWin;
+    const actualWins = Math.min(possibleWins, maxByInsights);
+    nextState.resources.insights -= actualWins * rates.insightCostPerWin;
+    nextState.resources.wins += actualWins;
+
+    const possibleFans = rates.fanPerSec * dt;
+    const maxByWins = nextState.resources.wins / rates.winCostPerFan;
+    const actualFans = Math.min(possibleFans, maxByWins);
+    nextState.resources.wins -= actualFans * rates.winCostPerFan;
+    nextState.resources.fans += actualFans;
 
     remaining -= dt;
   }
@@ -506,6 +575,7 @@ function App() {
   const [authMessage, setAuthMessage] = useState('');
   const [cloudStatus, setCloudStatus] = useState('idle');
   const [leaderboard, setLeaderboard] = useState([]);
+  const [leaderboardMessage, setLeaderboardMessage] = useState('');
 
   const hasHydrated = useRef(false);
   const saveTimer = useRef(null);
@@ -521,6 +591,12 @@ function App() {
     const timer = window.setTimeout(() => setSpendNotice(null), 1600);
     return () => window.clearTimeout(timer);
   }, [spendNotice]);
+
+  useEffect(() => {
+    if (!leaderboardMessage) return undefined;
+    const timer = window.setTimeout(() => setLeaderboardMessage(''), 2000);
+    return () => window.clearTimeout(timer);
+  }, [leaderboardMessage]);
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
@@ -555,6 +631,7 @@ function App() {
     setGameState(nextState);
     if (typeof window !== 'undefined') {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+      window.localStorage.setItem(STORAGE_BACKUP_KEY, JSON.stringify(nextState));
     }
   }, [gameState]);
 
@@ -577,6 +654,7 @@ function App() {
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(gameState));
+      window.localStorage.setItem(STORAGE_BACKUP_KEY, JSON.stringify(gameState));
     }, 500);
     return () => {
       if (saveTimer.current) window.clearTimeout(saveTimer.current);
@@ -680,6 +758,20 @@ function App() {
       window.clearInterval(interval);
     };
   }, []);
+
+  const handleLeaderboardUpdate = async () => {
+    if (!isSupabaseConfigured || !supabase || !session?.user) return;
+    const state = stateRef.current;
+    const displayName = getDisplayName(state, session);
+    const { error } = await supabase.from('leaderboard_entries').upsert({
+      user_id: session.user.id,
+      display_name: displayName,
+      titles: Math.floor(state.resources.titles),
+      wins: Math.floor(state.resources.wins),
+      updated_at: new Date().toISOString()
+    });
+    if (!error) setLeaderboardMessage('Leaderboard updated.');
+  };
 
   const rates = useMemo(() => getRates(gameState), [gameState]);
   const offlineSettings = useMemo(() => getOfflineSettings(gameState.legacyUpgrades || []), [gameState.legacyUpgrades]);
@@ -785,6 +877,7 @@ function App() {
     setGameState({ ...DEFAULT_STATE, lastUpdated: Date.now() });
     if (typeof window !== 'undefined') {
       window.localStorage.removeItem(STORAGE_KEY);
+      window.localStorage.removeItem(STORAGE_BACKUP_KEY);
     }
   };
 
@@ -821,18 +914,6 @@ function App() {
       return;
     }
     setAuthMessage('Check your inbox for the magic link.');
-  };
-
-  const handleGitHubSignIn = async () => {
-    if (!supabase) return;
-    setAuthMessage('Opening GitHub sign-in...');
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'github',
-      options: {
-        redirectTo: window.location.origin
-      }
-    });
-    if (error) setAuthMessage(`GitHub sign-in failed: ${error.message}`);
   };
 
   const handleSignOut = async () => {
@@ -917,9 +998,6 @@ function App() {
               <div className="auth-actions">
                 <button className="btn" onClick={handleMagicLink}>
                   Send magic link
-                </button>
-                <button className="btn ghost" onClick={handleGitHubSignIn}>
-                  Sign in with GitHub
                 </button>
               </div>
               {authMessage && <p className="muted">{authMessage}</p>}
@@ -1033,6 +1111,10 @@ function App() {
               <div>
                 <h3>Operations</h3>
                 <p className="muted">Spend data, insights, and wins to scale your analytics pipeline.</p>
+                <p className="muted small">
+                  Auto-convert: {rates.dataCostPerInsight} data → 1 insight, {rates.insightCostPerWin} insights → 1 win,
+                  {rates.winCostPerFan} win → 1 fan.
+                </p>
               </div>
               <div className="chip-row">
                 {[1, 10, 25].map((amount) => (
@@ -1052,6 +1134,7 @@ function App() {
                 const cost = getBuildingCost(building, owned, buyAmount);
                 const currency = building.costCurrency || 'data';
                 const affordable = (gameState.resources[currency] || 0) >= cost;
+                const perUnitRate = getBuildingPerUnitRate(building, rates.modifiers);
                 return (
                   <div key={building.id} className={`card ${currency}`}>
                     <div>
@@ -1061,6 +1144,8 @@ function App() {
                       </div>
                       <p className="muted">{building.description}</p>
                       <p className="muted">Owned: {owned}</p>
+                      <p className="muted">Each: +{formatNumber(perUnitRate)} {currency}/s</p>
+                      <p className="muted">Total: +{formatNumber(perUnitRate * owned)} {currency}/s</p>
                     </div>
                     <button
                       className={`btn ${affordable ? 'primary' : 'disabled'}`}
@@ -1169,10 +1254,13 @@ function App() {
               </div>
               <p className="muted">
                 {nextStep
-                  ? `Next rebirth: ${nextStep.title} at ${formatWhole(nextStep.threshold)} progression.`
+                  ? `Next rebirth: ${nextStep.title} at ${formatWhole(nextStep.threshold)} combined score.`
                   : 'Automatic tracking unlocked. Rebirths now speed everything up.'}
               </p>
             </div>
+            <p className="muted small">
+              Combined score = data + (insights × 5) + (wins × 20) + (fans × 2) + (titles × 500).
+            </p>
             <div className="grid two">
               {availableLegacy.map((upgrade) => {
                 const affordable = gameState.legacyPoints >= upgrade.cost;
@@ -1242,7 +1330,7 @@ function App() {
               </div>
               <p className="muted">
                 {nextStep
-                  ? `Next: ${nextStep.title} at ${formatWhole(nextStep.threshold)} progression.`
+                  ? `Next: ${nextStep.title} at ${formatWhole(nextStep.threshold)} combined score.`
                   : 'You unlocked automatic tracking.'}
               </p>
             </div>
@@ -1281,10 +1369,19 @@ function App() {
                       profileName: event.target.value
                     }))
                   }
+                  onBlur={handleLeaderboardUpdate}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      handleLeaderboardUpdate();
+                    }
+                  }}
                 />
+                <span className="helper">Press Enter to update the leaderboard.</span>
               </label>
             </div>
             {!isSupabaseConfigured && <p className="muted">Supabase not configured yet.</p>}
+            {leaderboardMessage && <p className="muted">{leaderboardMessage}</p>}
             {isSupabaseConfigured && leaderboard.length === 0 && <p className="muted">No entries yet.</p>}
             {leaderboard.length > 0 && (
               <div className="leaderboard">
