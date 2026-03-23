@@ -1145,7 +1145,10 @@ function App() {
       ? Math.min(1, Math.max(0, (progressScore - prevThreshold) / (nextThreshold - prevThreshold)))
       : 1;
   const canRebirth = nextThreshold ? progressScore >= nextThreshold : false;
-  const nextLegacyGain = Math.max(1, Math.floor(Math.sqrt(progressScore / 800)));
+  const postStoryRebirths = Math.max(0, gameState.rebirths - (REBIRTH_STEPS.length - 1));
+  const baseLegacyGain = Math.max(1, Math.floor(Math.sqrt(progressScore / 800)));
+  const nextLegacyGain =
+    postStoryRebirths > 0 ? Math.max(1, Math.floor(baseLegacyGain * (1 + postStoryRebirths * 0.2))) : baseLegacyGain;
 
   const handleClick = () => {
     setGameState((prev) => ({
