@@ -244,6 +244,44 @@ p {
   flex-wrap: wrap;
 }
 
+.panel-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.icon-btn {
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--muted);
+  border-radius: 999px;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.icon-btn:hover:not(.disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.icon-btn.disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.panel.dark .icon-btn {
+  background: transparent;
+  border-color: rgba(226, 232, 240, 0.35);
+  color: rgba(226, 232, 240, 0.7);
+}
+
+.panel.dark .icon-btn:hover:not(.disabled) {
+  border-color: #fff;
+  color: #fff;
+}
+
 .grid.two {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

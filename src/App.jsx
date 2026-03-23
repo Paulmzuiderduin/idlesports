@@ -4,6 +4,7 @@ import { isSupabaseConfigured, supabase } from './lib/supabase';
 const STORAGE_KEY = 'idlesports_state';
 const STORAGE_BACKUP_KEY = 'idlesports_state_backup';
 const STORAGE_META_KEY = 'idlesports_state_meta';
+const RIGHT_PANEL_KEY = 'idlesports_right_panel_order';
 const TICK_MS = 250;
 const OFFLINE_BASE_RATE = 0.1;
 const OFFLINE_BASE_CAP_SECONDS = 6 * 60 * 60;
@@ -150,6 +151,7 @@ const REBIRTH_STEPS = [
 ];
 
 const REBIRTH_POST_SCALE = 1.35;
+const RIGHT_PANEL_IDS = ['flow', 'season', 'legacy', 'rebirths', 'leaderboard', 'nextsteps'];
 
 const getRebirthRequirement = (rebirths) => {
   const lastIndex = REBIRTH_STEPS.length - 1;
@@ -405,6 +407,21 @@ const loadLocalMeta = () => {
     return { savedAt: clampNumber(parsed?.savedAt) };
   } catch {
     return { savedAt: 0 };
+  }
+};
+
+const loadRightPanelOrder = () => {
+  if (typeof window === 'undefined') return [...RIGHT_PANEL_IDS];
+  try {
+    const raw = window.localStorage.getItem(RIGHT_PANEL_KEY);
+    if (!raw) return [...RIGHT_PANEL_IDS];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [...RIGHT_PANEL_IDS];
+    const filtered = parsed.filter((id) => RIGHT_PANEL_IDS.includes(id));
+    const missing = RIGHT_PANEL_IDS.filter((id) => !filtered.includes(id));
+    return [...filtered, ...missing];
+  } catch {
+    return [...RIGHT_PANEL_IDS];
   }
 };
 
@@ -754,6 +771,7 @@ function App() {
   const [authEmail, setAuthEmail] = useState('');
   const [authMessage, setAuthMessage] = useState('');
   const [cloudStatus, setCloudStatus] = useState('idle');
+  const [rightPanelOrder, setRightPanelOrder] = useState(() => loadRightPanelOrder());
   const [leaderboard, setLeaderboard] = useState([]);
   const [leaderboardMessage, setLeaderboardMessage] = useState('');
   const [cloudSaveAt, setCloudSaveAt] = useState(null);
@@ -775,6 +793,11 @@ function App() {
     const timer = window.setTimeout(() => setLeaderboardMessage(''), 2000);
     return () => window.clearTimeout(timer);
   }, [leaderboardMessage]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(RIGHT_PANEL_KEY, JSON.stringify(rightPanelOrder));
+  }, [rightPanelOrder]);
 
   useEffect(() => {
     if (!cloudSaveAt) return undefined;
@@ -1039,6 +1062,18 @@ function App() {
       updated_at: new Date().toISOString()
     });
     if (!error) setLeaderboardMessage('Leaderboard updated.');
+  };
+
+  const moveRightPanel = (panelId, delta) => {
+    setRightPanelOrder((prev) => {
+      const index = prev.indexOf(panelId);
+      if (index === -1) return prev;
+      const nextIndex = index + delta;
+      if (nextIndex < 0 || nextIndex >= prev.length) return prev;
+      const next = [...prev];
+      [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+      return next;
+    });
   };
 
   const rates = useMemo(() => getRates(gameState), [gameState]);
@@ -1626,238 +1661,305 @@ function App() {
         </div>
 
         <div className="stack">
-          <div className="panel">
-            <h3>Flow Monitor</h3>
-            <p className="muted">Live conversion throughput at each stage.</p>
-            <div className="flow">
-              <div className="flow-row">
-                <span>Data → Insights</span>
-                <span>
-                  {formatRate(conversionActual.dataUsePerSec)} / {formatRate(conversionDemand.dataUsePerSec)}
-                </span>
-                <span className={`pill ${efficiency.insights < 0.999 ? 'warn' : 'accent'}`}>
-                  {formatPercent(efficiency.insights)}
-                </span>
+          {rightPanelOrder.map((panelId, index) => {
+            const actions = (
+              <div className="panel-actions">
+                <button
+                  className={`icon-btn ${index === 0 ? 'disabled' : ''}`}
+                  onClick={() => moveRightPanel(panelId, -1)}
+                  disabled={index === 0}
+                  aria-label="Move panel up"
+                >
+                  ↑
+                </button>
+                <button
+                  className={`icon-btn ${index === rightPanelOrder.length - 1 ? 'disabled' : ''}`}
+                  onClick={() => moveRightPanel(panelId, 1)}
+                  disabled={index === rightPanelOrder.length - 1}
+                  aria-label="Move panel down"
+                >
+                  ↓
+                </button>
               </div>
-              <div className="flow-row">
-                <span>Insights → Wins</span>
-                <span>
-                  {formatRate(conversionActual.insightUsePerSec)} / {formatRate(conversionDemand.insightUsePerSec)}
-                </span>
-                <span className={`pill ${efficiency.wins < 0.999 ? 'warn' : 'accent'}`}>
-                  {formatPercent(efficiency.wins)}
-                </span>
-              </div>
-              <div className="flow-row">
-                <span>Wins → Fans</span>
-                <span>
-                  {formatRate(conversionActual.winUsePerSec)} / {formatRate(conversionDemand.winUsePerSec)}
-                </span>
-                <span className={`pill ${efficiency.fans < 0.999 ? 'warn' : 'accent'}`}>
-                  {formatPercent(efficiency.fans)}
-                </span>
-              </div>
-            </div>
-            <div className="notice subtle">
-              <strong>{bottleneck.title}.</strong> {bottleneck.detail}
-            </div>
-          </div>
+            );
 
-          <div className="panel">
-            <h3>Season Push</h3>
-            <p className="muted">Claim titles for permanent growth.</p>
-            <div className="progress-card">
-              <div className="progress-header">
-                <span>Wins toward title</span>
-                <span>
-                  {formatNumber(gameState.resources.wins)} / {formatWhole(championshipRequirement)}
-                </span>
-              </div>
-              <div className="progress">
-                <div
-                  className="progress-bar"
-                  style={{
-                    width: `${Math.min(100, (gameState.resources.wins / championshipRequirement) * 100)}%`
-                  }}
-                />
-              </div>
-              <button
-                className={`btn ${gameState.resources.wins >= championshipRequirement ? 'accent' : 'disabled'}`}
-                onClick={handleClaimChampionship}
-                disabled={gameState.resources.wins < championshipRequirement}
-              >
-                Claim championship (+1 title)
-              </button>
-            </div>
-          </div>
-
-          <div className="panel">
-            <h3>Legacy Skill Tree</h3>
-            <p className="muted">Unlock permanent boosts with rebirth currency.</p>
-            <div className="progress-card">
-              <div className="progress-header">
-                <span>Legacy points</span>
-                <span>{formatWhole(gameState.legacyPoints)} available</span>
-              </div>
-              <div className="snapshot">
-                <span>Combined score: {formatWhole(progressScore)}</span>
-                <span className={scoreRate < 0 ? 'negative' : ''}>
-                  Score rate: {formatSignedRate(scoreRate)}
-                </span>
-                <span>
-                  ETA to next rebirth:{' '}
-                  {nextThreshold
-                    ? scoreRate > 0
-                      ? formatDuration(timeToNext || 0)
-                      : 'stalled'
-                    : 'max tier'}
-                </span>
-              </div>
-              <div className="progress">
-                <div
-                  className="progress-bar"
-                  style={{ width: `${Math.min(100, Math.max(0, progressToNext * 100))}%` }}
-                />
-              </div>
-              <p className="muted">
-                {nextThreshold
-                  ? `Next rebirth: ${nextRequirement.title} at ${formatWhole(nextThreshold)} combined score. ${formatWhole(
-                      scoreToNext
-                    )} remaining.`
-                  : 'Automatic tracking unlocked. Rebirths now speed everything up.'}
-              </p>
-            </div>
-            <p className="muted small">
-              Combined score = data + (insights × 5) + (wins × 20) + (fans × 2) + (titles × 500).
-            </p>
-            <div className="grid two">
-              {availableLegacy.map((upgrade) => {
-                const affordable = gameState.legacyPoints >= upgrade.cost;
-                return (
-                  <div key={upgrade.id} className="card legacy">
+            if (panelId === 'flow') {
+              return (
+                <div key={panelId} className="panel">
+                  <div className="panel-header">
                     <div>
-                      <div className="card-title-row">
-                        <Icon name="legacy" />
-                        <p className="card-title">{upgrade.name}</p>
-                      </div>
-                      <p className="muted">{upgrade.description}</p>
-                      <p className="muted">Requires rebirth {upgrade.requiresRebirths + 1}</p>
+                      <h3>Flow Monitor</h3>
+                      <p className="muted">Live conversion throughput at each stage.</p>
+                    </div>
+                    {actions}
+                  </div>
+                  <div className="flow">
+                    <div className="flow-row">
+                      <span>Data → Insights</span>
+                      <span>
+                        {formatRate(conversionActual.dataUsePerSec)} / {formatRate(conversionDemand.dataUsePerSec)}
+                      </span>
+                      <span className={`pill ${efficiency.insights < 0.999 ? 'warn' : 'accent'}`}>
+                        {formatPercent(efficiency.insights)}
+                      </span>
+                    </div>
+                    <div className="flow-row">
+                      <span>Insights → Wins</span>
+                      <span>
+                        {formatRate(conversionActual.insightUsePerSec)} / {formatRate(conversionDemand.insightUsePerSec)}
+                      </span>
+                      <span className={`pill ${efficiency.wins < 0.999 ? 'warn' : 'accent'}`}>
+                        {formatPercent(efficiency.wins)}
+                      </span>
+                    </div>
+                    <div className="flow-row">
+                      <span>Wins → Fans</span>
+                      <span>
+                        {formatRate(conversionActual.winUsePerSec)} / {formatRate(conversionDemand.winUsePerSec)}
+                      </span>
+                      <span className={`pill ${efficiency.fans < 0.999 ? 'warn' : 'accent'}`}>
+                        {formatPercent(efficiency.fans)}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="notice subtle">
+                    <strong>{bottleneck.title}.</strong> {bottleneck.detail}
+                  </div>
+                </div>
+              );
+            }
+
+            if (panelId === 'season') {
+              return (
+                <div key={panelId} className="panel">
+                  <div className="panel-header">
+                    <h3>Season Push</h3>
+                    {actions}
+                  </div>
+                  <p className="muted">Claim titles for permanent growth.</p>
+                  <div className="progress-card">
+                    <div className="progress-header">
+                      <span>Wins toward title</span>
+                      <span>
+                        {formatNumber(gameState.resources.wins)} / {formatWhole(championshipRequirement)}
+                      </span>
+                    </div>
+                    <div className="progress">
+                      <div
+                        className="progress-bar"
+                        style={{
+                          width: `${Math.min(100, (gameState.resources.wins / championshipRequirement) * 100)}%`
+                        }}
+                      />
                     </div>
                     <button
-                      className={`btn ${affordable ? 'accent' : 'disabled'}`}
-                      onClick={() => handleBuyLegacyUpgrade(upgrade.id)}
-                      disabled={!affordable}
+                      className={`btn ${gameState.resources.wins >= championshipRequirement ? 'accent' : 'disabled'}`}
+                      onClick={handleClaimChampionship}
+                      disabled={gameState.resources.wins < championshipRequirement}
                     >
-                      Unlock ({upgrade.cost} legacy)
+                      Claim championship (+1 title)
                     </button>
                   </div>
-                );
-              })}
-              {lockedLegacy.map((upgrade) => (
-                <div key={upgrade.id} className="card legacy locked">
-                  <div>
-                    <div className="card-title-row">
-                      <Icon name="legacy" />
-                      <p className="card-title">{upgrade.name}</p>
-                    </div>
-                    <p className="muted">{upgrade.description}</p>
-                    <p className="muted">Unlocks at rebirth {upgrade.requiresRebirths + 1}</p>
-                  </div>
-                  <button className="btn disabled" disabled>
-                    Locked
-                  </button>
                 </div>
-              ))}
-            </div>
-            {purchasedLegacy.length > 0 && (
-              <div className="purchased">
-                <p className="muted">Unlocked legacy upgrades</p>
-                <div className="pill-row">
-                  {purchasedLegacy.map((upgrade) => (
-                    <span key={upgrade.id} className="pill accent">
-                      {upgrade.name}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
+              );
+            }
 
-          <div className="panel">
-            <h3>Analyst Rebirths</h3>
-            <p className="muted">Your realistic build-up path, now tied to rebirths.</p>
-            <div className="milestones">
-              {REBIRTH_STEPS.map((step, index) => {
-                const unlocked = gameState.rebirths >= index;
-                const isCurrent = index === currentStepIndex;
-                return (
-                  <div key={step.id} className={`milestone ${unlocked ? 'unlocked' : ''}`}>
-                    <div className={`milestone-dot ${isCurrent ? 'active' : ''}`}>{index + 1}</div>
+            if (panelId === 'legacy') {
+              return (
+                <div key={panelId} className="panel">
+                  <div className="panel-header">
                     <div>
-                      <p className="card-title">{step.title}</p>
-                      <p className="muted">{step.description}</p>
+                      <h3>Legacy Skill Tree</h3>
+                      <p className="muted">Unlock permanent boosts with rebirth currency.</p>
                     </div>
+                    {actions}
                   </div>
-                );
-              })}
-            </div>
-            <p className="muted small">
-              After Automatic Tracking, rebirths continue as Automation Era +N with increasing score requirements.
-            </p>
-          </div>
-
-          <div className="panel">
-            <div className="panel-header">
-              <div>
-                <h3>Leaderboard</h3>
-                <p className="muted">Top 10 titles across players.</p>
-              </div>
-              <label className="field compact">
-                <span>Display name</span>
-                <input
-                  type="text"
-                  placeholder="Club name"
-                  value={gameState.profileName}
-                  onChange={(event) =>
-                    setGameState((prev) => ({
-                      ...prev,
-                      profileName: event.target.value
-                    }))
-                  }
-                  onBlur={handleLeaderboardUpdate}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      event.preventDefault();
-                      handleLeaderboardUpdate();
-                    }
-                  }}
-                />
-                <span className="helper">Press Enter to update the leaderboard.</span>
-              </label>
-            </div>
-            {!isSupabaseConfigured && <p className="muted">Supabase not configured yet.</p>}
-            {isSupabaseConfigured && leaderboard.length === 0 && <p className="muted">No entries yet.</p>}
-            {leaderboard.length > 0 && (
-              <div className="leaderboard">
-                {leaderboard.map((entry, index) => (
-                  <div key={`${entry.display_name}-${index}`} className="leaderboard-row">
-                    <span className="rank">#{index + 1}</span>
-                    <span className="name">{entry.display_name || 'Coach'}</span>
-                    <span className="score">{formatWhole(entry.titles)} titles</span>
-                    <span className="score muted">{formatWhole(entry.wins)} wins</span>
+                  <div className="progress-card">
+                    <div className="progress-header">
+                      <span>Legacy points</span>
+                      <span>{formatWhole(gameState.legacyPoints)} available</span>
+                    </div>
+                    <div className="snapshot">
+                      <span>Combined score: {formatWhole(progressScore)}</span>
+                      <span className={scoreRate < 0 ? 'negative' : ''}>
+                        Score rate: {formatSignedRate(scoreRate)}
+                      </span>
+                      <span>
+                        ETA to next rebirth:{' '}
+                        {nextThreshold
+                          ? scoreRate > 0
+                            ? formatDuration(timeToNext || 0)
+                            : 'stalled'
+                          : 'max tier'}
+                      </span>
+                    </div>
+                    <div className="progress">
+                      <div
+                        className="progress-bar"
+                        style={{ width: `${Math.min(100, Math.max(0, progressToNext * 100))}%` }}
+                      />
+                    </div>
+                    <p className="muted">
+                      {nextThreshold
+                        ? `Next rebirth: ${nextRequirement.title} at ${formatWhole(nextThreshold)} combined score. ${formatWhole(
+                            scoreToNext
+                          )} remaining.`
+                        : 'Automatic tracking unlocked. Rebirths now speed everything up.'}
+                    </p>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
+                  <p className="muted small">
+                    Combined score = data + (insights × 5) + (wins × 20) + (fans × 2) + (titles × 500).
+                  </p>
+                  <div className="grid two">
+                    {availableLegacy.map((upgrade) => {
+                      const affordable = gameState.legacyPoints >= upgrade.cost;
+                      return (
+                        <div key={upgrade.id} className="card legacy">
+                          <div>
+                            <div className="card-title-row">
+                              <Icon name="legacy" />
+                              <p className="card-title">{upgrade.name}</p>
+                            </div>
+                            <p className="muted">{upgrade.description}</p>
+                            <p className="muted">Requires rebirth {upgrade.requiresRebirths + 1}</p>
+                          </div>
+                          <button
+                            className={`btn ${affordable ? 'accent' : 'disabled'}`}
+                            onClick={() => handleBuyLegacyUpgrade(upgrade.id)}
+                            disabled={!affordable}
+                          >
+                            Unlock ({upgrade.cost} legacy)
+                          </button>
+                        </div>
+                      );
+                    })}
+                    {lockedLegacy.map((upgrade) => (
+                      <div key={upgrade.id} className="card legacy locked">
+                        <div>
+                          <div className="card-title-row">
+                            <Icon name="legacy" />
+                            <p className="card-title">{upgrade.name}</p>
+                          </div>
+                          <p className="muted">{upgrade.description}</p>
+                          <p className="muted">Unlocks at rebirth {upgrade.requiresRebirths + 1}</p>
+                        </div>
+                        <button className="btn disabled" disabled>
+                          Locked
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  {purchasedLegacy.length > 0 && (
+                    <div className="purchased">
+                      <p className="muted">Unlocked legacy upgrades</p>
+                      <div className="pill-row">
+                        {purchasedLegacy.map((upgrade) => (
+                          <span key={upgrade.id} className="pill accent">
+                            {upgrade.name}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            }
 
-          <div className="panel dark">
-            <h3>Next Steps</h3>
-            <p>
-              Add Scout Bots early, then balance Analyst Pods and Strategy Labs so your data does not bottleneck. Fans add
-              passive data, so pushing wins keeps everything accelerating.
-            </p>
-          </div>
+            if (panelId === 'rebirths') {
+              return (
+                <div key={panelId} className="panel">
+                  <div className="panel-header">
+                    <div>
+                      <h3>Analyst Rebirths</h3>
+                      <p className="muted">Your realistic build-up path, now tied to rebirths.</p>
+                    </div>
+                    {actions}
+                  </div>
+                  <div className="milestones">
+                    {REBIRTH_STEPS.map((step, index) => {
+                      const unlocked = gameState.rebirths >= index;
+                      const isCurrent = index === currentStepIndex;
+                      return (
+                        <div key={step.id} className={`milestone ${unlocked ? 'unlocked' : ''}`}>
+                          <div className={`milestone-dot ${isCurrent ? 'active' : ''}`}>{index + 1}</div>
+                          <div>
+                            <p className="card-title">{step.title}</p>
+                            <p className="muted">{step.description}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="muted small">
+                    After Automatic Tracking, rebirths continue as Automation Era +N with increasing score requirements.
+                  </p>
+                </div>
+              );
+            }
+
+            if (panelId === 'leaderboard') {
+              return (
+                <div key={panelId} className="panel">
+                  <div className="panel-header">
+                    <div>
+                      <h3>Leaderboard</h3>
+                      <p className="muted">Top 10 titles across players.</p>
+                    </div>
+                    {actions}
+                  </div>
+                  <label className="field compact">
+                    <span>Display name</span>
+                    <input
+                      type="text"
+                      placeholder="Club name"
+                      value={gameState.profileName}
+                      onChange={(event) =>
+                        setGameState((prev) => ({
+                          ...prev,
+                          profileName: event.target.value
+                        }))
+                      }
+                      onBlur={handleLeaderboardUpdate}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault();
+                          handleLeaderboardUpdate();
+                        }
+                      }}
+                    />
+                    <span className="helper">Press Enter to update the leaderboard.</span>
+                  </label>
+                  {!isSupabaseConfigured && <p className="muted">Supabase not configured yet.</p>}
+                  {isSupabaseConfigured && leaderboard.length === 0 && <p className="muted">No entries yet.</p>}
+                  {leaderboard.length > 0 && (
+                    <div className="leaderboard">
+                      {leaderboard.map((entry, index) => (
+                        <div key={`${entry.display_name}-${index}`} className="leaderboard-row">
+                          <span className="rank">#{index + 1}</span>
+                          <span className="name">{entry.display_name || 'Coach'}</span>
+                          <span className="score">{formatWhole(entry.titles)} titles</span>
+                          <span className="score muted">{formatWhole(entry.wins)} wins</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            return (
+              <div key={panelId} className="panel dark">
+                <div className="panel-header">
+                  <h3>Next Steps</h3>
+                  {actions}
+                </div>
+                <p>
+                  Add Scout Bots early, then balance Analyst Pods and Strategy Labs so your data does not bottleneck. Fans add
+                  passive data, so pushing wins keeps everything accelerating.
+                </p>
+              </div>
+            );
+          })}
         </div>
       </section>
     </div>
