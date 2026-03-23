@@ -715,13 +715,7 @@ const spendResources = (resources, cost) => {
 
 const getDisplayName = (state, session) => {
   if (state.profileName?.trim()) return state.profileName.trim();
-  if (!session?.user) return 'Coach';
-  return (
-    session.user.user_metadata?.full_name ||
-    session.user.user_metadata?.name ||
-    session.user.email?.split('@')[0] ||
-    'Coach'
-  );
+  return 'Coach';
 };
 
 function App() {
@@ -1757,25 +1751,6 @@ function App() {
           <div className="panel">
             <h3>Analyst Rebirths</h3>
             <p className="muted">Your realistic build-up path, now tied to rebirths.</p>
-            <div className="progress-card">
-              <div className="progress-header">
-                <span>Current stage</span>
-                <span>{REBIRTH_STEPS[currentStepIndex].title}</span>
-              </div>
-              <div className="progress">
-                <div
-                  className="progress-bar"
-                  style={{ width: `${Math.min(100, Math.max(0, progressToNext * 100))}%` }}
-                />
-              </div>
-              <p className="muted">
-                {nextStep
-                  ? `Next: ${nextStep.title} at ${formatWhole(nextStep.threshold)} combined score (${formatWhole(
-                      scoreToNext
-                    )} remaining).`
-                  : 'You unlocked automatic tracking.'}
-              </p>
-            </div>
             <div className="milestones">
               {REBIRTH_STEPS.map((step, index) => {
                 const unlocked = gameState.rebirths >= index;
