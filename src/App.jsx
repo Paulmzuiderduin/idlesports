@@ -517,7 +517,7 @@ const formatCostLabel = (cost) =>
 
 const getChampionshipRequirement = (titles) => Math.round(25 * Math.pow(1.4, titles));
 
-const getModifiers = (upgrades, legacyUpgrades, titles) => {
+const getModifiers = (upgrades, legacyUpgrades, titles, rebirths) => {
   const modifiers = {
     clickBonus: 0,
     clickMult: 1,
@@ -542,6 +542,8 @@ const getModifiers = (upgrades, legacyUpgrades, titles) => {
     if (type === 'globalMult') modifiers.globalMult *= value;
   });
 
+  const rebirthBonus = 1 + clampNumber(rebirths) * 0.02;
+  modifiers.dataPerSecMult *= rebirthBonus;
   modifiers.globalMult *= 1 + titles * 0.05;
   return modifiers;
 };
@@ -559,7 +561,7 @@ const getOfflineSettings = (legacyUpgrades) => {
 };
 
 const getRates = (state) => {
-  const modifiers = getModifiers(state.upgrades, state.legacyUpgrades, state.resources.titles);
+  const modifiers = getModifiers(state.upgrades, state.legacyUpgrades, state.resources.titles, state.rebirths);
   const dataPerClick = (BASE.dataPerClick + modifiers.clickBonus) * modifiers.clickMult * modifiers.globalMult;
   const dataPerSec =
     (state.buildings.scout * BASE.scoutDataPerSec + state.resources.fans * BASE.fanDataPerSec) *
@@ -1442,6 +1444,9 @@ function App() {
           </div>
           <p className="stat-value">{formatNumber(gameState.resources.data)}</p>
           <p className="stat-meta">Gross: {formatRate(rates.dataPerSec)}</p>
+          {gameState.rebirths > 0 && (
+            <p className="stat-meta">Rebirth bonus: +{formatPercent(gameState.rebirths * 0.02)} data/s</p>
+          )}
           <p className="stat-meta">Used for insights: {formatRate(conversionDemand.dataUsePerSec)}</p>
           <p className="stat-meta">
             Net now:{' '}
