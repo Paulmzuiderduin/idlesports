@@ -1142,7 +1142,7 @@ function App() {
   const timeToNext = scoreRate > 0 && scoreToNext > 0 ? scoreToNext / scoreRate : null;
   const progressToNext =
     nextThreshold && nextThreshold > prevThreshold
-      ? (progressScore - prevThreshold) / (nextThreshold - prevThreshold)
+      ? Math.min(1, Math.max(0, (progressScore - prevThreshold) / (nextThreshold - prevThreshold)))
       : 1;
   const canRebirth = nextThreshold ? progressScore >= nextThreshold : false;
   const nextLegacyGain = Math.max(1, Math.floor(Math.sqrt(progressScore / 800)));
