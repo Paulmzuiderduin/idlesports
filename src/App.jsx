@@ -339,6 +339,11 @@ const formatWhole = (value) =>
 
 const formatRate = (value) => `${formatNumber(value)}/s`;
 
+const formatCostLabel = (cost) =>
+  Object.entries(cost)
+    .map(([key, value]) => `${formatNumber(value)} ${key}`)
+    .join(' + ');
+
 const getChampionshipRequirement = (titles) => Math.round(25 * Math.pow(1.4, titles));
 
 const getModifiers = (upgrades, legacyUpgrades, titles) => {
@@ -494,6 +499,7 @@ function App() {
   const [gameState, setGameState] = useState(() => loadLocalState());
   const [buyAmount, setBuyAmount] = useState(1);
   const [offlineSummary, setOfflineSummary] = useState(null);
+  const [spendNotice, setSpendNotice] = useState(null);
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [authEmail, setAuthEmail] = useState('');
@@ -509,6 +515,12 @@ function App() {
   useEffect(() => {
     stateRef.current = gameState;
   }, [gameState]);
+
+  useEffect(() => {
+    if (!spendNotice) return undefined;
+    const timer = window.setTimeout(() => setSpendNotice(null), 1600);
+    return () => window.clearTimeout(timer);
+  }, [spendNotice]);
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
@@ -712,6 +724,11 @@ function App() {
       const cost = getBuildingCost(building, owned, buyAmount);
       const currency = building.costCurrency || 'data';
       if ((prev.resources[currency] || 0) < cost) return prev;
+      setSpendNotice({
+        label: building.name,
+        costLabel: formatCostLabel({ [currency]: cost }),
+        tone: currency
+      });
       return {
         ...prev,
         resources: {
@@ -732,6 +749,12 @@ function App() {
     setGameState((prev) => {
       if (prev.upgrades.includes(upgradeId)) return prev;
       if (!canAffordUpgrade(prev.resources, upgrade.cost)) return prev;
+      const keys = Object.keys(upgrade.cost);
+      setSpendNotice({
+        label: upgrade.name,
+        costLabel: formatCostLabel(upgrade.cost),
+        tone: keys.length === 1 ? keys[0] : 'multi'
+      });
       return {
         ...prev,
         resources: spendResources(prev.resources, upgrade.cost),
@@ -834,6 +857,11 @@ function App() {
       if (prev.legacyUpgrades.includes(upgradeId)) return prev;
       if (prev.rebirths < upgrade.requiresRebirths) return prev;
       if (prev.legacyPoints < upgrade.cost) return prev;
+      setSpendNotice({
+        label: upgrade.name,
+        costLabel: formatCostLabel({ legacy: upgrade.cost }),
+        tone: 'legacy'
+      });
       return {
         ...prev,
         legacyPoints: prev.legacyPoints - upgrade.cost,
@@ -933,6 +961,12 @@ function App() {
           Offline gains run at {Math.round(offlineSettings.rate * 100)}% efficiency, capped at{' '}
           {Math.round(offlineSettings.capSeconds / 3600)} hours.
         </p>
+        {spendNotice && (
+          <div className={`spend-toast ${spendNotice.tone}`}>
+            <span>Spent {spendNotice.costLabel}</span>
+            <span className="muted">for {spendNotice.label}</span>
+          </div>
+        )}
         <div className="rebirth-strip">
           <div>
             <p className="muted">Rebirths</p>
