@@ -1632,19 +1632,19 @@ function App() {
             {purchasedUpgrades.length > 0 && (
               <div className="purchased">
                 <p className="muted">Purchased</p>
-                <div className="pill-row">
-                {purchasedUpgrades.map((upgrade) => {
-                  const effectLabel = getUpgradeEffectLabel(upgrade);
-                  return (
-                    <span key={upgrade.id} className="pill">
-                      {upgrade.name}
-                      {effectLabel && <span className="pill-effect"> · {effectLabel}</span>}
-                    </span>
-                  );
-                })}
+                <div className="upgrade-list">
+                  {purchasedUpgrades.map((upgrade) => {
+                    const effectLabel = getUpgradeEffectLabel(upgrade);
+                    return (
+                      <div key={upgrade.id} className="upgrade-row">
+                        <span className="upgrade-name">{upgrade.name}</span>
+                        <span className="upgrade-effect">{effectLabel || 'Unlocked'}</span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          )}
+            )}
           </div>
         </div>
 
@@ -1796,22 +1796,22 @@ function App() {
                 </div>
                     ))}
                   </div>
-                  {purchasedLegacy.length > 0 && (
-                    <div className="purchased">
-                      <p className="muted">Unlocked legacy upgrades</p>
-                      <div className="pill-row">
-                      {purchasedLegacy.map((upgrade) => {
-                        const effectLabel = getUpgradeEffectLabel(upgrade);
-                        return (
-                          <span key={upgrade.id} className="pill accent">
-                            {upgrade.name}
-                            {effectLabel && <span className="pill-effect"> · {effectLabel}</span>}
-                          </span>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
+            {purchasedLegacy.length > 0 && (
+              <div className="purchased">
+                <p className="muted">Unlocked legacy upgrades</p>
+                <div className="upgrade-list">
+                  {purchasedLegacy.map((upgrade) => {
+                    const effectLabel = getUpgradeEffectLabel(upgrade);
+                    return (
+                      <div key={upgrade.id} className="upgrade-row">
+                        <span className="upgrade-name">{upgrade.name}</span>
+                        <span className="upgrade-effect">{effectLabel || 'Unlocked'}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
                 </div>
               );
             }

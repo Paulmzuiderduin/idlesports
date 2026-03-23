@@ -474,10 +474,30 @@ p {
   color: #475569;
 }
 
-.pill-effect {
-  font-weight: 500;
-  color: var(--muted);
+.upgrade-list {
+  display: grid;
+  gap: 6px;
+}
+
+.upgrade-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+}
+
+.upgrade-name {
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.upgrade-effect {
   font-size: 11px;
+  color: var(--muted);
 }
 
 .stat-meta .pill {
