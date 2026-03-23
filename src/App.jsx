@@ -103,6 +103,42 @@ const UPGRADES = [
     cost: { titles: 1 },
     effect: { type: 'globalMult', value: 1.1 }
   }
+  ,
+  {
+    id: 'pipeline-accelerator',
+    name: 'Pipeline Accelerator',
+    description: 'Data per second +35%.',
+    cost: { insights: 80 },
+    effect: { type: 'dataPerSecMult', value: 1.35 }
+  },
+  {
+    id: 'insight-optimizer',
+    name: 'Insight Optimizer',
+    description: 'Insight conversion +40%.',
+    cost: { wins: 20 },
+    effect: { type: 'insightPerSecMult', value: 1.4 }
+  },
+  {
+    id: 'strategy-protocols',
+    name: 'Strategy Protocols',
+    description: 'Win conversion +45%.',
+    cost: { fans: 150 },
+    effect: { type: 'winPerSecMult', value: 1.45 }
+  },
+  {
+    id: 'fan-analytics',
+    name: 'Fan Analytics',
+    description: 'Fan conversion +50%.',
+    cost: { titles: 2 },
+    effect: { type: 'fanPerSecMult', value: 1.5 }
+  },
+  {
+    id: 'championship-algorithm',
+    name: 'Championship Algorithm',
+    description: 'Global production +15%.',
+    cost: { titles: 3 },
+    effect: { type: 'globalMult', value: 1.15 }
+  }
 ];
 
 const REBIRTH_STEPS = [
