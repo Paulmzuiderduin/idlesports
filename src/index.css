@@ -129,65 +129,6 @@ p {
   border-radius: 16px;
 }
 
-.spend-toast {
-  margin-top: 12px;
-  padding: 10px 12px;
-  border-radius: 16px;
-  font-size: 12px;
-  font-weight: 600;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-  border: 1px solid var(--border);
-  background: #f8fafc;
-}
-
-.spend-toast .muted {
-  font-weight: 500;
-}
-
-.spend-toast.data {
-  background: rgba(6, 182, 212, 0.12);
-  border-color: rgba(6, 182, 212, 0.35);
-  color: #0e7490;
-}
-
-.spend-toast.insights {
-  background: rgba(99, 102, 241, 0.12);
-  border-color: rgba(99, 102, 241, 0.35);
-  color: #4338ca;
-}
-
-.spend-toast.wins {
-  background: rgba(245, 158, 11, 0.15);
-  border-color: rgba(245, 158, 11, 0.35);
-  color: #92400e;
-}
-
-.spend-toast.fans {
-  background: rgba(34, 197, 94, 0.12);
-  border-color: rgba(34, 197, 94, 0.35);
-  color: #166534;
-}
-
-.spend-toast.titles {
-  background: rgba(248, 113, 113, 0.15);
-  border-color: rgba(248, 113, 113, 0.35);
-  color: #b91c1c;
-}
-
-.spend-toast.multi {
-  background: rgba(15, 118, 110, 0.12);
-  border-color: rgba(15, 118, 110, 0.35);
-  color: #0f766e;
-}
-
-.spend-toast.legacy {
-  background: rgba(13, 148, 136, 0.12);
-  border-color: rgba(13, 148, 136, 0.35);
-  color: #0f766e;
-}
 
 .notice {
   margin-top: 12px;
