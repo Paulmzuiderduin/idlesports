@@ -26,13 +26,20 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
 
-      - name: Set Supabase env
+      - name: Set build env
         run: |
+          echo "VITE_CLOUD_ENABLED=${{ vars.VITE_CLOUD_ENABLED || 'false' }}" >> .env
           echo "VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL }}" >> .env
           echo "VITE_SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY }}" >> .env
 
       - name: Install deps
         run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
 
       - name: Build
         run: npm run build
